@@ -7,17 +7,28 @@ import pytest
 from rkk_hand_bridge import rgmp_client as rgmp
 
 
+class _RecvSocket:
+    """A `.recv`-compatible stand-in for a real socket, backed by bytes
+    already in hand - matches the real socket API, unlike a bare BytesIO."""
+
+    def __init__(self, data: bytes):
+        self._buf = io.BytesIO(data)
+
+    def recv(self, n):
+        return self._buf.read(n)
+
+
 def test_read_frame_splits_header_and_payload():
     payload = b"hello"
-    stream = io.BytesIO(struct.pack("<II", 1, len(payload)) + payload)
-    msg_prefix, body = rgmp.read_frame(stream)
+    sock = _RecvSocket(struct.pack("<II", 1, len(payload)) + payload)
+    msg_prefix, body = rgmp.read_frame(sock)
     assert msg_prefix == 1
     assert body == payload
 
 
 def test_read_frame_raises_on_truncated_stream():
     with pytest.raises(EOFError):
-        rgmp.read_frame(io.BytesIO(b"\x00\x00"))
+        rgmp.read_frame(_RecvSocket(b"\x00\x00"))
 
 
 def _definition(device_type="solved_hand", groups=None, static_data=None, hand="right"):

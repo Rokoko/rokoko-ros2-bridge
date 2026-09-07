@@ -26,9 +26,10 @@ _JOINT_NAMES = (
 
 
 class FeedableSocket:
-    """A `read`/`close`-compatible stand-in for a socket whose bytes the
-    test controls the pacing of, so pub/sub discovery can complete
-    before a volatile (non-latched) message is published."""
+    """A `recv`/`close`-compatible stand-in for a socket (matches the
+    real socket API) whose bytes the test controls the pacing of, so
+    pub/sub discovery can complete before a volatile (non-latched)
+    message is published."""
 
     def __init__(self):
         self._chunks = queue.Queue()
@@ -37,7 +38,7 @@ class FeedableSocket:
     def feed(self, data: bytes):
         self._chunks.put(data)
 
-    def read(self, n):
+    def recv(self, n):
         if not self._buf:
             item = self._chunks.get()
             if item is None:

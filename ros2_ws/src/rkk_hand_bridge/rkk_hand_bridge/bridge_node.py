@@ -105,6 +105,8 @@ class BridgeNode(Node):
                 seen = self._stream.wait(seen, timeout=1.0)
             except TimeoutError:
                 continue
+            if self._stopping.is_set():
+                return  # shutting down: don't publish into a dying context
             self._publish_new_state()
 
     def _publish_new_state(self):

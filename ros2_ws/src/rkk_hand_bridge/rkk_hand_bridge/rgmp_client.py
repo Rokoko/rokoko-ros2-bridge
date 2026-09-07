@@ -47,15 +47,15 @@ class Disconnect:
     device_id: int
 
 
-def read_frame(reader) -> tuple[int, bytes]:
-    msg_prefix, msg_len = struct.unpack("<II", _read_exact(reader, 8))
-    return msg_prefix, _read_exact(reader, msg_len)
+def read_frame(sock) -> tuple[int, bytes]:
+    msg_prefix, msg_len = struct.unpack("<II", _read_exact(sock, 8))
+    return msg_prefix, _read_exact(sock, msg_len)
 
 
-def _read_exact(reader, n: int) -> bytes:
+def _read_exact(sock, n: int) -> bytes:
     buf = bytearray()
     while len(buf) < n:
-        chunk = reader.read(n - len(buf))
+        chunk = sock.recv(n - len(buf))
         if not chunk:
             raise EOFError("connection closed")
         buf.extend(chunk)

@@ -8,15 +8,16 @@ from rkk_hand_bridge.hand_stream import HandStream
 
 
 class FakeSocket:
-    """A `read`/`close`-compatible stand-in for a real TCP socket. Blocks
-    once its buffered bytes are exhausted, until `close()` releases it
-    with EOF — the same behavior a real socket close causes."""
+    """A `recv`/`close`-compatible stand-in for a real TCP socket
+    (matches the real socket API, not a file-like `.read()`). Blocks once
+    its buffered bytes are exhausted, until `close()` releases it with
+    EOF — the same behavior a real socket close causes."""
 
     def __init__(self, data: bytes):
         self._buf = io.BytesIO(data)
         self._closed = threading.Event()
 
-    def read(self, n):
+    def recv(self, n):
         chunk = self._buf.read(n)
         if chunk:
             return chunk
