@@ -103,8 +103,12 @@ def _radii_by_joint(static_data: list) -> dict:
     return radii
 
 
+def decode_data_header(payload: bytes) -> tuple[int, int, int]:
+    return struct.unpack_from("<IIQ", payload, 0)
+
+
 def decode_data(payload: bytes) -> DataFrame:
-    device_id, group_id, timestamp_us = struct.unpack_from("<IIQ", payload, 0)
+    device_id, group_id, timestamp_us = decode_data_header(payload)
     joints = tuple(
         _decode_pose(payload, _DATA_HEADER_SIZE + i * _POSE_SIZE)
         for i in range(JOINT_COUNT)
