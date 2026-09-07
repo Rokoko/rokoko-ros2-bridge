@@ -4,8 +4,10 @@ import struct
 import time
 
 import rclpy
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
+from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
 
 from rkk_hand_bridge import rgmp_client as rgmp
@@ -71,6 +73,10 @@ def _data_bytes(device_id=7, group_id=0, timestamp_us=1_000_000):
     pose = struct.pack("<7f", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
     payload = struct.pack("<IIQ", device_id, group_id, timestamp_us) + pose * rgmp.JOINT_COUNT
     return _frame(rgmp.MSG_DATA, payload)
+
+
+def _disconnect_bytes(device_id=7):
+    return _frame(rgmp.MSG_DISCONNECT, struct.pack("<I", device_id))
 
 
 def _spin_until(executor, condition, timeout_s):
@@ -185,6 +191,108 @@ def test_publish_tf_broadcasts_one_transform_per_joint():
         assert len(transforms) == rgmp.JOINT_COUNT
         assert transforms[0].header.frame_id == "world"
         assert transforms[1].child_frame_id == "rkk_right_hand_xr_wrist"
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def _call_calibrate(executor, recorder, node):
+    client = recorder.create_client(Trigger, "/rkk_hand_bridge/calibrate")
+    assert _spin_until(executor, lambda: client.wait_for_service(timeout_sec=0.0), 5.0)
+    future = client.call_async(Trigger.Request())
+    assert _spin_until(executor, future.done, 5.0)
+    client.destroy()
+    return future.result()
+
+
+def test_calibrate_fails_with_no_hand_data_yet():
+    rclpy.init()
+    try:
+        stream = HandStream("h", 0, connect=lambda: FeedableSocket())
+        node = BridgeNode(stream=stream)
+        recorder = rclpy.create_node("recorder")
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        result = _call_calibrate(executor, recorder, node)
+        assert result.success is False
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_calibrate_applies_offset_to_later_frames():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(stream=stream)
+        recorder = rclpy.create_node("recorder")
+
+        received = []
+        joints_sub = recorder.create_subscription(
+            HandJoints, "/rkk_hand_bridge/hand/joints", received.append, _SENSOR_QOS
+        )
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes())
+        assert _spin_until(executor, lambda: joints_sub.get_publisher_count() > 0, 5.0)
+        sock.feed(_data_bytes())
+        assert _spin_until(executor, lambda: len(received) > 0, 5.0)
+
+        result = _call_calibrate(executor, recorder, node)
+        assert result.success is True
+        assert node._yaw_offset != 0.0
+
+        received.clear()
+        sock.feed(_data_bytes(timestamp_us=2_000_000))
+        assert _spin_until(executor, lambda: len(received) > 0, 5.0)
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_diagnostics_reflects_connection_and_calibration_state():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(stream=stream)
+        recorder = rclpy.create_node("recorder")
+
+        statuses = []
+        recorder.create_subscription(DiagnosticArray, "/diagnostics", statuses.append, 10)
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes())
+        sock.feed(_data_bytes())
+        assert _spin_until(executor, lambda: statuses and statuses[-1].status, 5.0)
+        assert statuses[-1].status[0].level == DiagnosticStatus.WARN
+
+        statuses.clear()
+        result = _call_calibrate(executor, recorder, node)
+        assert result.success is True
+        assert _spin_until(executor, lambda: statuses, 5.0)
+        assert statuses[-1].status[0].level == DiagnosticStatus.OK
+
+        statuses.clear()
+        sock.feed(_disconnect_bytes())
+        assert _spin_until(executor, lambda: statuses, 5.0)
+        assert statuses[-1].status[0].level == DiagnosticStatus.ERROR
+        assert statuses[-1].status[0].message == "disconnected"
 
         node.destroy_node()
         recorder.destroy_node()

@@ -6,10 +6,12 @@ import threading
 
 import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from geometry_msgs.msg import Point, Pose, Quaternion, TransformStamped
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rkk_hand_msgs.msg import HandDescription, HandJoints
+from std_srvs.srv import Trigger
 from tf2_ros import TransformBroadcaster
 
 from rkk_hand_bridge import frame_convert as fc
@@ -59,16 +61,21 @@ class BridgeNode(Node):
         self.declare_parameter("stamp_source", "auto")
         self.declare_parameter("publish_tf", False)
         self.declare_parameter("parent_frame_id", "")
+        self.declare_parameter("calibrate_facing_rad", 0.0)
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)
+        self._diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        self._calibrate_srv = self.create_service(Trigger, "~/calibrate", self._handle_calibrate)
         self._tf_broadcaster = TransformBroadcaster(self)
         self._warned_no_parent_frame = False
 
         self._published_description = set()
-        self._rebases = {}
+        self._known_hands = {}  # device_id -> hand string, kept across disconnects
         self._stamp_sources = {}
         self._last_timestamp_us = {}
+        self._yaw_offset = 0.0  # shared across hands; a room-level correction, not per-hand
+        self._ever_calibrated = False
 
         self._stream = stream or HandStream(
             self.get_parameter("solver_host").value,
@@ -107,11 +114,11 @@ class BridgeNode(Node):
         for device_id in list(self._published_description):
             if device_id not in hands:
                 self._published_description.discard(device_id)
-                self._rebases.pop(device_id, None)
                 self._stamp_sources.pop(device_id, None)
                 self._last_timestamp_us.pop(device_id, None)
 
         for device_id, definition in hands.items():
+            self._known_hands[device_id] = definition.hand
             if device_id not in self._published_description:
                 self._publish_description(definition)
                 self._published_description.add(device_id)
@@ -125,6 +132,8 @@ class BridgeNode(Node):
             self._last_timestamp_us[device_id] = frame.timestamp_us
             self._publish_joints(definition, frame)
 
+        self._publish_diagnostics(hands)
+
     def _publish_description(self, definition):
         msg = HandDescription()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -136,7 +145,7 @@ class BridgeNode(Node):
         self._description_pub.publish(msg)
 
     def _publish_joints(self, definition, frame):
-        rebase = self._rebases.setdefault(frame.device_id, fc.Rebase())
+        rebase = fc.Rebase(yaw_rad=self._yaw_offset)
         stamp_source = self._stamp_sources.setdefault(
             frame.device_id, StampSource(self.get_parameter("stamp_source").value)
         )
@@ -178,6 +187,54 @@ class BridgeNode(Node):
             t.transform.rotation = Quaternion(x=orientation[0], y=orientation[1], z=orientation[2], w=orientation[3])
             transforms.append(t)
         self._tf_broadcaster.sendTransform(transforms)
+
+    def _publish_diagnostics(self, hands):
+        array = DiagnosticArray()
+        array.header.stamp = self.get_clock().now().to_msg()
+        for device_id, hand in self._known_hands.items():
+            status = DiagnosticStatus()
+            status.hardware_id = str(device_id)
+            status.name = f"rkk_hand_bridge: {hand} hand"
+            if device_id not in hands:
+                status.level = DiagnosticStatus.ERROR
+                status.message = "disconnected"
+            elif not self._ever_calibrated:
+                status.level = DiagnosticStatus.WARN
+                status.message = "connected, yaw uncalibrated"
+            else:
+                status.level = DiagnosticStatus.OK
+                status.message = "connected"
+            array.status.append(status)
+        self._diagnostics_pub.publish(array)
+
+    def _handle_calibrate(self, request, response):
+        frames = self._stream.latest()
+        if not frames:
+            response.success = False
+            response.message = "no hand data yet"
+            return response
+
+        device_id = max(frames, key=lambda d: frames[d].timestamp_us)
+        definition = self._stream.hands().get(device_id)
+        if definition is None or "wrist" not in definition.joint_names:
+            response.success = False
+            response.message = "no wrist joint available"
+            return response
+
+        wrist = frames[device_id].joints[definition.joint_names.index("wrist")]
+        facing_rad = self.get_parameter("calibrate_facing_rad").value
+        try:
+            self._yaw_offset = fc.capture_yaw_offset(wrist.orientation, facing_rad)
+        except ValueError as exc:
+            response.success = False
+            response.message = str(exc)
+            return response
+
+        self._ever_calibrated = True
+        self._publish_diagnostics(self._stream.hands())
+        response.success = True
+        response.message = f"calibrated yaw offset to {self._yaw_offset:.3f} rad"
+        return response
 
 
 def main(args=None):
