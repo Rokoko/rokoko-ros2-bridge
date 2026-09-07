@@ -9,6 +9,14 @@
 
   <buildtool_depend>ament_python</buildtool_depend>
 
+  <depend>rclpy</depend>
+  <depend>rkk_hand_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+
+  <test_depend>python3-pytest</test_depend>
+
   <export>
     <build_type>ament_python</build_type>
   </export>

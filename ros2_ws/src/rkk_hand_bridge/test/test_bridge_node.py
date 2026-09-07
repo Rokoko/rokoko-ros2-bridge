@@ -5,6 +5,8 @@ import time
 
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
+from rclpy.parameter import Parameter
+from tf2_msgs.msg import TFMessage
 
 from rkk_hand_bridge import rgmp_client as rgmp
 from rkk_hand_bridge.bridge_node import _LATCHED_QOS, _SENSOR_QOS, BridgeNode
@@ -121,6 +123,68 @@ def test_publishes_description_and_joints():
         assert len(received["joints"].joints) == rgmp.JOINT_COUNT
         # epoch mode: 1_000_000 us -> 1s exactly
         assert received["joints"].header.stamp.sec == 1
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_publish_tf_requires_a_parent_frame_id():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("publish_tf", value=True)],
+        )
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+
+        sock.feed(_definition_bytes())
+        sock.feed(_data_bytes())
+        # no parent_frame_id set: should warn and not crash, not broadcast
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            executor.spin_once(timeout_sec=0.1)
+        assert node._warned_no_parent_frame
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_publish_tf_broadcasts_one_transform_per_joint():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[
+                Parameter("publish_tf", value=True),
+                Parameter("parent_frame_id", value="world"),
+            ],
+        )
+        recorder = rclpy.create_node("recorder")
+
+        received = []
+        tf_sub = recorder.create_subscription(TFMessage, "/tf", received.append, 10)
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes())
+        assert _spin_until(executor, lambda: tf_sub.get_publisher_count() > 0, 5.0)
+        sock.feed(_data_bytes())
+        assert _spin_until(executor, lambda: len(received) > 0, 5.0)
+
+        transforms = received[0].transforms
+        assert len(transforms) == rgmp.JOINT_COUNT
+        assert transforms[0].header.frame_id == "world"
+        assert transforms[1].child_frame_id == "rkk_right_hand_xr_wrist"
 
         node.destroy_node()
         recorder.destroy_node()

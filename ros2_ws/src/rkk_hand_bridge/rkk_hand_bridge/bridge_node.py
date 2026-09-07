@@ -6,10 +6,11 @@ import threading
 
 import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
-from geometry_msgs.msg import Point, Pose, Quaternion
+from geometry_msgs.msg import Point, Pose, Quaternion, TransformStamped
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rkk_hand_msgs.msg import HandDescription, HandJoints
+from tf2_ros import TransformBroadcaster
 
 from rkk_hand_bridge import frame_convert as fc
 from rkk_hand_bridge.hand_stream import HandStream
@@ -44,17 +45,25 @@ def _to_pose(position, orientation) -> Pose:
     )
 
 
+def _joint_frame_id(hand: str, joint_name: str) -> str:
+    return f"rkk_{hand}_hand_xr_{joint_name}"
+
+
 class BridgeNode(Node):
-    def __init__(self, stream: HandStream | None = None):
-        super().__init__("rkk_hand_bridge")
+    def __init__(self, stream: HandStream | None = None, **node_kwargs):
+        super().__init__("rkk_hand_bridge", **node_kwargs)
 
         self.declare_parameter("solver_host", "127.0.0.1")
         self.declare_parameter("solver_port", 12277)
         self.declare_parameter("reconnect_backoff_s", 0.5)
         self.declare_parameter("stamp_source", "auto")
+        self.declare_parameter("publish_tf", False)
+        self.declare_parameter("parent_frame_id", "")
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)
+        self._tf_broadcaster = TransformBroadcaster(self)
+        self._warned_no_parent_frame = False
 
         self._published_description = set()
         self._rebases = {}
@@ -80,7 +89,7 @@ class BridgeNode(Node):
         super().destroy_node()
 
     def _on_unusable_hand(self, device_id: int, reason: str):
-        self.get_logger().warn(f"solved hand {device_id}: {reason}")
+        self.get_logger().warning(f"solved hand {device_id}: {reason}")
 
     def _watch(self):
         seen = 0
@@ -137,13 +146,38 @@ class BridgeNode(Node):
         if stamp_ns is None:
             return  # backwards jump - drop, don't publish a stale-looking stamp
 
+        stamp = _stamp_from_ns(stamp_ns)
+        rebased = [rebase.apply(j.position, j.orientation) for j in frame.joints]
+
         msg = HandJoints()
-        msg.header.stamp = _stamp_from_ns(stamp_ns)
+        msg.header.stamp = stamp
         msg.hand = _hand_code(definition.hand)
         msg.device_id = frame.device_id
         msg.timestamp_us = frame.timestamp_us
-        msg.joints = [_to_pose(*rebase.apply(j.position, j.orientation)) for j in frame.joints]
+        msg.joints = [_to_pose(position, orientation) for position, orientation in rebased]
         self._joints_pub.publish(msg)
+
+        if self.get_parameter("publish_tf").value:
+            self._broadcast_tf(definition, rebased, stamp)
+
+    def _broadcast_tf(self, definition, rebased, stamp: TimeMsg):
+        parent_frame_id = self.get_parameter("parent_frame_id").value
+        if not parent_frame_id:
+            if not self._warned_no_parent_frame:
+                self.get_logger().warning("publish_tf is set but parent_frame_id is empty; not broadcasting")
+                self._warned_no_parent_frame = True
+            return
+
+        transforms = []
+        for name, (position, orientation) in zip(definition.joint_names, rebased):
+            t = TransformStamped()
+            t.header.stamp = stamp
+            t.header.frame_id = parent_frame_id
+            t.child_frame_id = _joint_frame_id(definition.hand, name)
+            t.transform.translation.x, t.transform.translation.y, t.transform.translation.z = position
+            t.transform.rotation = Quaternion(x=orientation[0], y=orientation[1], z=orientation[2], w=orientation[3])
+            transforms.append(t)
+        self._tf_broadcaster.sendTransform(transforms)
 
 
 def main(args=None):
