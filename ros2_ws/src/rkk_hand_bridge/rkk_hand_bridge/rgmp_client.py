@@ -87,6 +87,16 @@ def decode_definition(payload: bytes) -> Definition | None:
     )
 
 
+def describe_unusable(payload: bytes) -> str | None:
+    """Why decode_definition returned None for this payload, or None if
+    it's not worth a warning (e.g. not a solved-hand device at all)."""
+    definition = json.loads(payload)
+    if definition.get("device_type") != DEVICE_TYPE:
+        return None
+    _, group = _find_group(definition.get("groups") or [])
+    return None if group is not None else "missing_joints_openxr"
+
+
 def _find_group(groups: list) -> tuple[int, dict | None]:
     for group_id, group in enumerate(groups):
         if group.get("name") == GROUP_NAME:

@@ -122,3 +122,39 @@ def test_stop_terminates_the_background_thread():
     stream.wait(0, timeout=2.0)
     stream.stop()
     assert not stream.connected
+
+
+def _no_openxr_definition_bytes(device_id=7) -> bytes:
+    payload = json.dumps(
+        {
+            "device_id": device_id,
+            "device_type": "solved_hand",
+            "timestamp_epoch": "unix_epoch",
+            "device_info": {"hand": "right"},
+            "static_data": [],
+            "groups": [{"name": "joints_local", "streams": []}],
+        }
+    ).encode()
+    return _frame(rgmp.MSG_DEFINITION, payload)
+
+
+def test_warns_once_for_a_hand_missing_the_openxr_group():
+    data = _no_openxr_definition_bytes() * 2  # sent twice
+    warnings = []
+    stream = HandStream(
+        "h",
+        0,
+        connect=lambda: FakeSocket(data),
+        on_unusable_hand=lambda device_id, reason: warnings.append((device_id, reason)),
+    )
+    stream.start()
+    try:
+        # nothing changes state (no hand/frame), so poll briefly instead of wait()
+        for _ in range(20):
+            if warnings:
+                break
+            threading.Event().wait(0.05)
+        assert warnings == [(7, "missing_joints_openxr")]
+        assert stream.hands() == {}
+    finally:
+        stream.stop()

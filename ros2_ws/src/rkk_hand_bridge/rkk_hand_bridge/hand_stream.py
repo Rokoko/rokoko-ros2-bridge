@@ -2,6 +2,7 @@
 per hand. A consumer that falls behind sees the newest pose, not a
 queue of stale ones."""
 
+import json
 import socket
 import threading
 
@@ -9,17 +10,19 @@ from rkk_hand_bridge import rgmp_client as rgmp
 
 
 class HandStream:
-    def __init__(self, host, port, reconnect_backoff_s=0.5, connect=None):
+    def __init__(self, host, port, reconnect_backoff_s=0.5, connect=None, on_unusable_hand=None):
         self.host = host
         self.port = port
         self._reconnect_backoff_s = reconnect_backoff_s
         self._connect = connect or self._default_connect
+        self._on_unusable_hand = on_unusable_hand
 
         self._cond = threading.Condition()
         self._hands = {}
         self._frames = {}
         self._generation = 0
         self._connected = False
+        self._warned = set()
 
         self._stop = threading.Event()
         self._thread = None
@@ -108,6 +111,7 @@ class HandStream:
     def _on_definition(self, payload: bytes):
         definition = rgmp.decode_definition(payload)
         if definition is None:
+            self._warn_once(payload)
             return
         with self._cond:
             self._hands[definition.device_id] = definition
@@ -127,11 +131,23 @@ class HandStream:
             self._generation += 1
             self._cond.notify_all()
 
+    def _warn_once(self, payload: bytes):
+        reason = rgmp.describe_unusable(payload)
+        if reason is None or self._on_unusable_hand is None:
+            return
+        device_id = json.loads(payload).get("device_id")
+        with self._cond:
+            if device_id in self._warned:
+                return
+            self._warned.add(device_id)
+        self._on_unusable_hand(device_id, reason)
+
     def _on_disconnect(self, payload: bytes):
         device_id = rgmp.decode_disconnect(payload).device_id
         with self._cond:
             had_hand = self._hands.pop(device_id, None) is not None
             had_frame = self._frames.pop(device_id, None) is not None
+            self._warned.discard(device_id)
             if had_hand or had_frame:
                 self._generation += 1
                 self._cond.notify_all()
@@ -143,6 +159,7 @@ class HandStream:
     def _drop_all(self):
         with self._cond:
             self._connected = False
+            self._warned.clear()
             if self._hands or self._frames:
                 self._hands.clear()
                 self._frames.clear()
