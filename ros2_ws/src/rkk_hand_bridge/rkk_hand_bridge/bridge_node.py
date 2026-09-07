@@ -244,6 +244,14 @@ def main(args=None):
     node = BridgeNode()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        node.destroy_node()
+        # A second SIGINT can land here too - e.g. mid-join() while the
+        # background threads unwind - not just at rclpy.spin() above.
+        # rclpy.shutdown() must still run either way.
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
         rclpy.shutdown()
