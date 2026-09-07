@@ -26,6 +26,10 @@ environment/dependency manager. Minimal dependencies by design.
   ```sh
   sudo apt install python3-colcon-common-extensions
   ```
+- **[Rokoko Device SDK](https://sdk.rokoko.com/)** — provides `rokoko-sdk`
+  (the SmartGlove driver) and `rkk-hand-solver` (the hand solver), both of
+  which this bridge connects to. See
+  [Running the upstream chain](#running-the-upstream-chain) below.
 
 ## Repo layout
 
@@ -49,6 +53,23 @@ source /opt/ros/lyrical/setup.bash
 ```
 
 That's it for now — there's nothing to build yet.
+
+## Running the upstream chain
+
+This bridge is a plain RGMP v2 client of `rkk-hand-solver`'s solved-hand
+output — it needs exactly two other processes running, nothing more:
+
+```sh
+# 1. The SmartGlove driver. -ef 1024 enables experimental epoch timestamps,
+#    which this bridge prefers when available (see the timestamp handling
+#    in the design docs) — verify the exact flag name against
+#    `rokoko-sdk --help` on your build, long and short forms can vary.
+rokoko-sdk -vv --auto-stream-usb -ef 1024
+
+# 2. The hand solver, attaching to the driver already running above.
+#    --emit-openxr is the only group this bridge reads.
+rkk-hand-solver --emit-openxr --no-driver
+```
 
 ## Status
 

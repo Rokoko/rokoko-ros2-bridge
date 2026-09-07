@@ -219,3 +219,7 @@ __marimo__/
 
 # Claude
 .claude/
+
+# ROS2 / colcon build artifacts (build/ above already covers the build/ dir)
+install/
+log/
