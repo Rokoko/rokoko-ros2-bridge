@@ -214,3 +214,18 @@ def test_undecodable_payloads_are_reported_and_survived():
             assert reported and "undecodable frame" in reported[0]
         finally:
             stream.stop()
+
+
+def test_a_long_reconnect_delay_never_shrinks():
+    from rkk_hand_bridge.hand_stream import _MAX_RECONNECT_DELAY_S
+
+    def progression(base, steps=4):
+        delay, seen = base, []
+        for _ in range(steps):
+            seen.append(delay)
+            delay = min(delay * 2.0, max(_MAX_RECONNECT_DELAY_S, base))
+        return seen
+
+    assert progression(0.5) == [0.5, 1.0, 2.0, 4.0]
+    assert progression(30.0) == [30.0, 30.0, 30.0, 30.0]
+    assert all(b >= a for a, b in zip(progression(30.0), progression(30.0)[1:]))

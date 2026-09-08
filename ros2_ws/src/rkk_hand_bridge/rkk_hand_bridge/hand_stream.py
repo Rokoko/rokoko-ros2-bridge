@@ -9,7 +9,8 @@ import threading
 
 from rkk_hand_bridge import rgmp
 
-# Ceiling for the doubling in _run().
+# The doubling stops here, or at the starting delay if that is already
+# longer — asking for a slower retry must never produce a faster one.
 _MAX_RECONNECT_DELAY_S = 10.0
 
 
@@ -96,7 +97,7 @@ class HandStream:
             if self._stop.is_set():
                 return
             self._stop.wait(delay)
-            delay = min(delay * 2.0, _MAX_RECONNECT_DELAY_S)
+            delay = min(delay * 2.0, max(_MAX_RECONNECT_DELAY_S, self._reconnect_delay_s))
 
     def _report_error(self, message: str):
         if self.on_stream_error is not None:
