@@ -156,7 +156,7 @@ def test_stop_terminates_the_background_thread():
     stream.start()
     stream.wait(0, timeout=2.0)
     stream.stop()
-    assert not stream.connected
+    assert stream._thread is None
 
 
 def _no_openxr_definition_bytes(device_id=7) -> bytes:

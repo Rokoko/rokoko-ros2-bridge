@@ -32,7 +32,6 @@ class HandStream:
         self._hands = {}
         self._frames = {}
         self._generation = 0
-        self._connected = False
         self._warned = set()
 
         self._stop = threading.Event()
@@ -60,11 +59,6 @@ class HandStream:
         if self._thread is not None:
             self._thread.join(timeout=5.0)
             self._thread = None
-
-    @property
-    def connected(self) -> bool:
-        with self._cond:
-            return self._connected
 
     def hands(self) -> dict:
         with self._cond:
@@ -96,7 +90,6 @@ class HandStream:
                         sock.close()
                         return
                     self._sock = sock
-                self._set_connected(True)
                 self._read_loop(sock)
             except (OSError, EOFError):
                 pass
@@ -183,13 +176,8 @@ class HandStream:
                 self._generation += 1
                 self._cond.notify_all()
 
-    def _set_connected(self, value: bool):
-        with self._cond:
-            self._connected = value
-
     def _drop_all(self):
         with self._cond:
-            self._connected = False
             self._warned.clear()
             if self._hands or self._frames:
                 self._hands.clear()
