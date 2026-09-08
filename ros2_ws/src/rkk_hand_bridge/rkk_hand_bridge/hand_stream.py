@@ -13,6 +13,10 @@ from rkk_hand_bridge import rgmp
 # longer — asking for a slower retry must never produce a faster one.
 _MAX_RECONNECT_DELAY_S = 10.0
 
+# Without this a host that is up but silent blocks the reader thread in
+# the kernel's TCP retries, minutes at a time, with no reconnect.
+_CONNECT_TIMEOUT_S = 5.0
+
 
 class HandStream:
     def __init__(self, host, port, reconnect_delay_s=0.5, connect=None,
@@ -37,7 +41,9 @@ class HandStream:
         self._delivered = False
 
     def _default_connect(self):
-        return socket.create_connection((self.host, self.port))
+        sock = socket.create_connection((self.host, self.port), timeout=_CONNECT_TIMEOUT_S)
+        sock.settimeout(None)
+        return sock
 
     def start(self):
         if self._thread is not None:

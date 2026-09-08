@@ -256,3 +256,32 @@ def test_a_connection_that_delivers_nothing_still_backs_off():
         stream.stop()
     # Without backing off this reconnects every 50ms, about 20 times.
     assert 2 <= len(attempts) <= 8, len(attempts)
+
+
+def test_connecting_uses_a_timeout_and_then_blocks_for_reads():
+    import socket as socket_module
+    from rkk_hand_bridge import hand_stream as hs
+
+    captured = {}
+
+    def fake_create_connection(address, timeout=None):
+        captured["timeout"] = timeout
+        return _InstantlyClosedSocket()
+
+    class _Recording(_InstantlyClosedSocket):
+        def settimeout(self, value):
+            captured["read_timeout"] = value
+
+    def fake(address, timeout=None):
+        captured["timeout"] = timeout
+        return _Recording()
+
+    original = socket_module.create_connection
+    socket_module.create_connection = fake
+    try:
+        HandStream("h", 1)._default_connect()
+    finally:
+        socket_module.create_connection = original
+
+    assert captured["timeout"] == hs._CONNECT_TIMEOUT_S
+    assert captured["read_timeout"] is None
