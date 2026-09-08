@@ -48,3 +48,17 @@ def test_convert_only_rotates_no_translation():
     assert position != (1.0, 2.0, 3.0)  # rotated
     origin, _ = fc.XrToRosConverter().convert((0.0, 0.0, 0.0), fc.IDENTITY)
     assert origin == (0.0, 0.0, 0.0)  # no anchor offset added
+
+
+def test_heading_spread_of_one_heading_is_zero():
+    assert fc.heading_spread([1.2]) == 0.0
+
+
+def test_heading_spread_measures_the_widest_gap():
+    assert math.isclose(fc.heading_spread([0.0, 0.3, -0.2]), 0.5)
+
+
+def test_heading_spread_wraps_across_pi():
+    # 175 degrees and -175 degrees are 10 degrees apart, not 350.
+    spread = fc.heading_spread([math.radians(175), math.radians(-175)])
+    assert math.isclose(spread, math.radians(10), abs_tol=1e-9)

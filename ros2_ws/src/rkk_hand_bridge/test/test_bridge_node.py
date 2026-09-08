@@ -1,4 +1,5 @@
 import json
+import math
 import queue
 import struct
 import threading
@@ -14,6 +15,7 @@ from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import Marker, MarkerArray
 
+from rkk_hand_bridge import frame_convert as fc
 from rkk_hand_bridge import rgmp
 from rkk_hand_bridge.bridge_node import _LATCHED_QOS, _SENSOR_QOS, BridgeNode
 from rkk_hand_bridge.hand_stream import HandStream
@@ -661,5 +663,123 @@ def test_watch_still_raises_when_the_context_is_healthy():
             node._watch()
 
         node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def _data_bytes_facing(device_id, yaw_deg, group_id=0, timestamp_us=1_000_000):
+    """Frame whose wrist is yawed `yaw_deg` about the xr_base up axis."""
+    identity = struct.pack("<7f", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+    qx, qy, qz, qw = fc.axis_angle((0.0, 1.0, 0.0), math.radians(yaw_deg))
+    wrist = struct.pack("<7f", 0.0, 0.0, 0.0, qx, qy, qz, qw)
+    wrist_index = _JOINT_NAMES.index("wrist")
+    poses = b"".join(
+        wrist if i == wrist_index else identity for i in range(rgmp.JOINT_COUNT)
+    )
+    payload = struct.pack("<IIQ", device_id, group_id, timestamp_us) + poses
+    return _frame(rgmp.MSG_DATA, payload)
+
+
+def _two_hands(sock, executor, node, left_yaw_deg, right_yaw_deg):
+    sock.feed(_definition_bytes(device_id=7, hand="left"))
+    sock.feed(_definition_bytes(device_id=8, hand="right"))
+    sock.feed(_data_bytes_facing(7, left_yaw_deg))
+    sock.feed(_data_bytes_facing(8, right_yaw_deg))
+    assert _spin_until(executor, lambda: len(node._stream.latest()) == 2, 5.0)
+
+
+def test_calibrate_names_the_hand_it_sampled():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        recorder = rclpy.create_node("recorder")
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        _two_hands(sock, executor, node, 0.0, 5.0)
+        result = _call_calibrate(executor, recorder, node)
+        assert result.success is True
+        assert "left hand" in result.message
+        assert "device 7" in result.message
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_calibrate_refuses_hands_that_disagree():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        recorder = rclpy.create_node("recorder")
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        _two_hands(sock, executor, node, 0.0, 45.0)
+        result = _call_calibrate(executor, recorder, node)
+        assert result.success is False
+        assert "45 degrees" in result.message
+        assert node._yaw_offset == 0.0
+        assert node._ever_calibrated is False
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_calibrate_accepts_a_wide_disagreement_when_allowed():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(
+            stream=HandStream("h", 0, connect=lambda: sock),
+            parameter_overrides=[
+                Parameter("calibrate_max_disagreement_rad", value=math.pi),
+            ],
+        )
+        recorder = rclpy.create_node("recorder")
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        _two_hands(sock, executor, node, 0.0, 45.0)
+        result = _call_calibrate(executor, recorder, node)
+        assert result.success is True
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_calibrate_is_deterministic_across_two_hands():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        recorder = rclpy.create_node("recorder")
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        _two_hands(sock, executor, node, 0.0, 5.0)
+        first = _call_calibrate(executor, recorder, node)
+        # the newest frame is now the right hand's, but the lowest device
+        # id still decides, so the answer does not move.
+        sock.feed(_data_bytes_facing(8, 5.0, timestamp_us=9_000_000))
+        assert _spin_until(
+            executor, lambda: node._stream.latest()[8].timestamp_us == 9_000_000, 5.0
+        )
+        second = _call_calibrate(executor, recorder, node)
+        assert first.message == second.message
+
+        node.destroy_node()
+        recorder.destroy_node()
     finally:
         rclpy.shutdown()

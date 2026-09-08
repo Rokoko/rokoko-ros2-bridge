@@ -93,4 +93,14 @@ def measure_heading(wrist_orientation: Quat) -> float:
 
 def capture_yaw_offset(wrist_orientation: Quat, facing_rad: float = 0.0) -> float:
     """The yaw offset that makes the wrist face `facing_rad`."""
-    return normalize_angle(facing_rad - measure_heading(wrist_orientation))
+    return yaw_offset_for_heading(measure_heading(wrist_orientation), facing_rad)
+
+
+def yaw_offset_for_heading(heading_rad: float, facing_rad: float = 0.0) -> float:
+    return normalize_angle(facing_rad - heading_rad)
+
+
+def heading_spread(headings: list[float]) -> float:
+    """Widest angle between any two headings, wrapping correctly."""
+    offsets = [normalize_angle(heading - headings[0]) for heading in headings]
+    return max(offsets) - min(offsets)

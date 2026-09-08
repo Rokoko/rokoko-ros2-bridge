@@ -91,7 +91,9 @@ Useful launch arguments (pass as `name:=value`): `solver_host`,
 `0.5`), `marker_rate_hz` (default `30`, shared across hands),
 `marker_joint_scale`,
 `marker_max_joint_radius_m`, `parent_frame_id` (required if `publish_tf` or `publish_markers`
-is set), `stamp_source` (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
+is set), `stamp_source` (default `auto`), `calibrate_facing_rad`,
+`calibrate_max_disagreement_rad` (default 30 degrees in radians).
+`rkk_hand_bringup` additionally
 takes `spawn_solver` (default `true`), `config` and `rviz` (default
 `false`) — see below.
 
@@ -162,6 +164,29 @@ ros2 service call /rkk_hand_bridge/calibrate std_srvs/srv/Trigger {}
 
 `/diagnostics` should show `WARN`/"connected, yaw uncalibrated" before this
 and `OK`/"connected" immediately after a successful call.
+
+**The offset is shared by every connected hand.** It corrects for
+magnetic-north referencing, which is a property of the room rather than
+of a glove, so one call calibrates all of them. The measurement comes
+from a single hand — the lowest `device_id`, chosen so repeated calls
+give the same answer — and the reply names it:
+
+```
+calibrated yaw offset to -2.834 rad from the left hand (device 843143769)
+```
+
+Because one hand's heading is applied to all, the hands have to agree.
+If they are pointing more than `calibrate_max_disagreement_rad` apart
+(default 30 degrees) the call is refused rather than silently applying
+one hand's correction to the other:
+
+```
+hands disagree by 45 degrees; calibrate with every hand facing the same
+way, or raise calibrate_max_disagreement_rad (now 30 degrees)
+```
+
+Nothing changes when a call is refused — the previous offset stays in
+place, and `/diagnostics` keeps reporting uncalibrated if it was.
 
 ## Visualizing in RViz
 

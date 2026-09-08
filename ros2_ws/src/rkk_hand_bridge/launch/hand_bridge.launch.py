@@ -17,6 +17,7 @@ def generate_launch_description():
         DeclareLaunchArgument("marker_rate_hz", default_value="30.0"),
         DeclareLaunchArgument("parent_frame_id", default_value=""),
         DeclareLaunchArgument("calibrate_facing_rad", default_value="0.0"),
+        DeclareLaunchArgument("calibrate_max_disagreement_rad", default_value="0.5236"),
         DeclareLaunchArgument("reconnect_delay_s", default_value="0.5"),
     ]
 
@@ -38,6 +39,7 @@ def generate_launch_description():
                 "marker_rate_hz": LaunchConfiguration("marker_rate_hz"),
                 "parent_frame_id": LaunchConfiguration("parent_frame_id"),
                 "calibrate_facing_rad": LaunchConfiguration("calibrate_facing_rad"),
+                "calibrate_max_disagreement_rad": LaunchConfiguration("calibrate_max_disagreement_rad"),
                 "reconnect_delay_s": LaunchConfiguration("reconnect_delay_s"),
             }
         ],

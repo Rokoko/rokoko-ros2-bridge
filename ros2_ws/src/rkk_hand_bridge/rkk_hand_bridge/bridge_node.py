@@ -2,6 +2,7 @@
 topics. Thin glue over hand_stream, frame_convert, and timestamps -
 those hold the actual logic."""
 
+import math
 import threading
 
 import rclpy
@@ -92,6 +93,7 @@ class BridgeNode(Node):
         self.declare_parameter("marker_rate_hz", 30.0)
         self.declare_parameter("parent_frame_id", "")
         self.declare_parameter("calibrate_facing_rad", 0.0)
+        self.declare_parameter("calibrate_max_disagreement_rad", math.radians(30.0))
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)
@@ -334,33 +336,51 @@ class BridgeNode(Node):
         self._diagnostics_pub.publish(array)
 
     def _handle_calibrate(self, request, response):
-        frames = self._stream.latest()
-        if not frames:
+        headings, unreadable = self._wrist_headings()
+        if not headings:
             response.success = False
-            response.message = "no hand data yet"
+            response.message = unreadable or "no hand data yet"
             return response
 
-        device_id = max(frames, key=lambda d: frames[d].timestamp_us)
-        definition = self._stream.hands().get(device_id)
-        if definition is None or "wrist" not in definition.joint_names:
+        spread = fc.heading_spread(list(headings.values()))
+        limit = self.get_parameter("calibrate_max_disagreement_rad").value
+        if spread > limit:
             response.success = False
-            response.message = "no wrist joint available"
+            response.message = (
+                f"hands disagree by {math.degrees(spread):.0f} degrees; calibrate with "
+                f"every hand facing the same way, or raise "
+                f"calibrate_max_disagreement_rad (now {math.degrees(limit):.0f} degrees)"
+            )
             return response
 
-        wrist = frames[device_id].joints[definition.joint_names.index("wrist")]
+        device_id = min(headings)
         facing_rad = self.get_parameter("calibrate_facing_rad").value
-        try:
-            self._yaw_offset = fc.capture_yaw_offset(wrist.orientation, facing_rad)
-        except ValueError as exc:
-            response.success = False
-            response.message = str(exc)
-            return response
-
+        self._yaw_offset = fc.yaw_offset_for_heading(headings[device_id], facing_rad)
         self._ever_calibrated = True
         self._publish_diagnostics(self._stream.hands())
+
+        hand = self._known_hands.get(device_id, "unknown")
         response.success = True
-        response.message = f"calibrated yaw offset to {self._yaw_offset:.3f} rad"
+        response.message = (
+            f"calibrated yaw offset to {self._yaw_offset:.3f} rad "
+            f"from the {hand} hand (device {device_id})"
+        )
         return response
+
+    def _wrist_headings(self) -> tuple[dict[int, float], str | None]:
+        hands = self._stream.hands()
+        headings, unreadable = {}, None
+        for device_id, frame in self._stream.latest().items():
+            definition = hands.get(device_id)
+            if definition is None or "wrist" not in definition.joint_names:
+                unreadable = unreadable or "no wrist joint available"
+                continue
+            wrist = frame.joints[definition.joint_names.index("wrist")]
+            try:
+                headings[device_id] = fc.measure_heading(wrist.orientation)
+            except ValueError as exc:
+                unreadable = str(exc)
+        return headings, unreadable
 
 
 def main(args=None):
