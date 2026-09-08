@@ -1,9 +1,11 @@
 import json
 import queue
 import struct
+import threading
 import time
 from types import SimpleNamespace
 
+import pytest
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from rclpy.executors import SingleThreadedExecutor
@@ -600,6 +602,63 @@ def test_a_hand_that_becomes_supported_clears_its_error():
 
         sock.feed(_definition_bytes())
         assert _spin_until(executor, lambda: 7 not in node._unsupported, 5.0)
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+class _OneUpdateStream:
+    """Wakes _watch exactly once, then blocks like an idle stream."""
+
+    def __init__(self):
+        self.woken = False
+
+    def wait(self, seen, timeout=None):
+        if self.woken:
+            raise TimeoutError("idle")
+        self.woken = True
+        return seen + 1
+
+    def hands(self):
+        return {}
+
+    def latest(self):
+        return {}
+
+    def stop(self):
+        pass
+
+
+def test_watch_exits_quietly_when_the_context_dies_mid_publish():
+    rclpy.init()
+    sock = FeedableSocket()
+    node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+    # rclpy.shutdown() tears the context down and destroys the publishers;
+    # SIGINT does the same underneath a watch thread already in flight.
+    rclpy.shutdown()
+    assert not node.context.ok()
+    with pytest.raises(Exception):
+        node._publish_new_state()
+
+    node._stream = _OneUpdateStream()
+    node._stopping.clear()
+    node._watch()  # must return rather than raise out of the thread
+
+
+def test_watch_still_raises_when_the_context_is_healthy():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        node._stream = _OneUpdateStream()
+
+        def boom():
+            raise ValueError("a real failure, not a shutdown")
+
+        node._publish_new_state = boom
+        with pytest.raises(ValueError):
+            node._watch()
 
         node.destroy_node()
     finally:

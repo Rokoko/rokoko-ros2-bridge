@@ -220,6 +220,11 @@ colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
 namespace each — so you can toggle spheres and skeleton independently in
 the display's **Namespaces** list.
 
+Marker namespaces and TF frame ids are keyed on handedness, so **two
+gloves of the same handedness are not supported** — one left and one
+right is the case this handles. `hand/joints` still carries `device_id`
+and stays unambiguous either way.
+
 Markers carry a `marker_lifetime_s` (default `0.5`) lifetime, so if the
 stream stops they fade out instead of leaving a frozen hand on screen; a
 hand that disconnects cleanly clears itself immediately.

@@ -144,9 +144,16 @@ class BridgeNode(Node):
                 seen = self._stream.wait(seen, timeout=1.0)
             except TimeoutError:
                 continue
-            if self._stopping.is_set():
-                return  # shutting down: don't publish into a dying context
-            self._publish_new_state()
+            if self._stopping.is_set() or not self.context.ok():
+                return
+            try:
+                self._publish_new_state()
+            except Exception:
+                # SIGINT can invalidate the context mid-publish, after the
+                # check above; anything else is a real failure.
+                if self.context.ok():
+                    raise
+                return
 
     def _publish_new_state(self):
         hands = self._stream.hands()
