@@ -1,152 +1,189 @@
 # rkk-ros2-bridge
 
-A ROS2 bridge for Rokoko SmartGlove solved-hand data: connects to
-`rkk-hand-solver`'s solved-hand output (RGMP v2) and republishes it as
-ROS2 topics, an opt-in TF broadcast, and a yaw-calibration service.
+A ROS 2 bridge for Rokoko SmartGlove solved-hand data. It connects to
+`rkk-hand-solver`'s solved-hand output and republishes it as ROS 2 topics,
+an optional TF broadcast, optional RViz markers, and a yaw-calibration
+service.
 
-Runs natively against the system ROS2 install — no separate Python
-environment/dependency manager. Minimal dependencies by design.
+- [Prerequisites](#prerequisites)
+- [Installing ROS 2](#installing-ros-2) — [Linux](#linux) · [macOS](#macos) · [Windows](#windows)
+- [Building](#building)
+- [Running](#running)
+- [Published interface](#published-interface)
+- [Calibrating](#calibrating)
+- [Visualizing in RViz](#visualizing-in-rviz)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
 
-> **Note:** ROS2's Python bindings (`rclpy`, message
-> packages, etc.) aren't distributed via PyPI — they only exist as part of a
-> ROS2 distro install, made available by sourcing `/opt/ros/<distro>/setup.bash`
-> into the system Python. A `uv`/`venv` environment can't see those, so this
-> package is meant to run against the system interpreter, not an isolated
-> virtual environment. If isolation is ever needed (a clean environment, a
-> different OS/distro version, CI), the right tool for that is a **Docker
-> container** with ROS2 installed inside it — not a Python venv.
+---
 
 ## Prerequisites
 
-- **Ubuntu 26.04** (or whatever your ROS2 distro targets)
-- **[ROS2 Lyrical Luth](https://docs.ros.org/en/lyrical/Get-Started/Installation/Ubuntu-Install-Debs.html)**
-  — follow the official Debian install guide. Heads up: `ros-lyrical-desktop`
-  is a large install (hundreds of packages, a couple GB) — expect it to take
-  a few minutes.
-- **colcon** — not bundled with `ros-lyrical-desktop`, install separately:
-  ```sh
-  sudo apt install python3-colcon-common-extensions
+**Rokoko Device SDK 0.10.0 or newer**, from
+[sdk.rokoko.com](https://sdk.rokoko.com/). Earlier versions do not emit the
+OpenXR joint group this bridge reads. It ships the driver and the hand
+solver that the bridge sits behind; see the SDK's own documentation for
+anything about those. Check your version with:
+
+```sh
+rokoko doctor
+```
+
+**SmartGloves**, connected over USB or WiFi.
+
+**ROS 2 Lyrical Luth**, on Linux, macOS or Windows — see
+[Installing ROS 2](#installing-ros-2).
+
+> ROS 2's Python bindings (`rclpy` and the message packages) are not on
+> PyPI — they exist only inside a ROS 2 installation and become importable
+> when you source its `setup.bash`. A `venv` or `uv` environment cannot see
+> them, so run this package against the system interpreter. If you need
+> isolation, use a Docker image with ROS 2 inside it rather than a Python
+> virtual environment.
+
+---
+
+## Installing ROS 2
+
+This bridge targets **ROS 2 Lyrical Luth**. The official installation index
+lists every supported platform and method — Debian packages, RPM packages,
+binary archives, and source builds:
+
+**[ROS 2 Lyrical Luth — Installation](https://docs.ros.org/en/lyrical/Get-Started/Installation.html)**
+
+Pick whichever suits your machine; the sections below cover Linux, macOS
+and Windows. Whatever you choose, you also need `colcon` to build the
+workspace, and you must source the installation in every shell that runs
+ROS 2 commands.
+
+### Linux
+
+On Debian and Ubuntu, install from the apt repositories:
+
+**[Debian packages — install guide](https://docs.ros.org/en/lyrical/Get-Started/Installation/Ubuntu-Install-Debs.html)**
+
+```sh
+sudo apt install ros-lyrical-desktop   # includes RViz; several hundred packages
+sudo apt install ros-dev-tools         # colcon, rosdep, vcstool
+```
+
+On other distributions, use the RPM packages or the binary archive from the
+[installation index](https://docs.ros.org/en/lyrical/Get-Started/Installation.html)
+— everything after this point works the same way.
+
+Source it, and add the line to your `~/.bashrc` if you would rather not
+repeat it:
+
+```sh
+source /opt/ros/lyrical/setup.bash
+```
+
+Verify with `ros2 doctor`.
+
+### macOS
+
+There are no binary packages for macOS, so ROS 2 is built from source:
+
+**[macOS (source) — install guide](https://docs.ros.org/en/lyrical/Get-Started/Installation/Alternatives/macOS-Development-Setup.html)**
+
+Two things to know before starting:
+
+- It is a **source build** — expect a long compile, with Homebrew
+  prerequisites rather than `apt`.
+- It requires **disabling System Integrity Protection (SIP)**, which means
+  rebooting into recovery mode. Read that part of the guide first.
+
+Then source it, from wherever you built it:
+
+```sh
+source ~/ros2_lyrical/install/setup.bash
+```
+
+Everything from [Building](#building) onward is the same on every
+platform.
+
+### Windows
+
+> Untested by the maintainers — reports welcome.
+
+ROS 2 ships binary packages for Windows:
+
+**[Windows (binary) — install guide](https://docs.ros.org/en/lyrical/Get-Started/Installation/Windows-Install-Binary.html)**
+
+Nothing in this bridge is platform-specific — it is plain Python over a
+TCP connection — so it should run once ROS 2 is installed. The part to
+check first is whether the **Rokoko Device SDK is available for Windows**,
+since the driver and solver have to run somewhere; see the SDK's own
+documentation.
+
+Three differences from the commands elsewhere in this README:
+
+- Source ROS 2 and the workspace with the batch scripts rather than
+  `source`:
+  ```bat
+  call C:\dev\ros2_lyrical\local_setup.bat
+  call install\setup.bat
   ```
-- **[Rokoko Device SDK](https://sdk.rokoko.com/)** — provides `rokoko-sdk`
-  (the SmartGlove driver) and `rkk-hand-solver` (the hand solver), both of
-  which this bridge connects to. See
-  [Running the upstream chain](#running-the-upstream-chain) below.
+- Use `python` rather than `python3`.
+- In `upstream.yaml`, `executable:` may need to name the `.exe` or give a
+  full path, depending on how the SDK installs.
 
-## Repo layout
-
-```
-ros2_ws/
-  src/
-    rkk_hand_msgs/       # interfaces: HandDescription.msg, HandJoints.msg
-    rkk_hand_bridge/      # the node: connects, decodes, publishes
-    rkk_hand_bringup/     # launch files that bring up the whole chain
-```
-
-`ros2_ws` is the colcon workspace root — packages live under `ros2_ws/src`,
-and `colcon build` is run from there.
+---
 
 ## Building
 
 ```sh
-source /opt/ros/lyrical/setup.bash   # or add this to ~/.bashrc
 cd ros2_ws
 colcon build
-source install/setup.bash            # needed in every new shell you run/launch from
+source install/setup.bash
 ```
+
+`install/setup.bash` has to be sourced in every new shell you launch or run
+from. The workspace holds three packages:
+
+| Package | Contents |
+| --- | --- |
+| `rkk_hand_msgs` | the message definitions |
+| `rkk_hand_bridge` | the bridge node |
+| `rkk_hand_bringup` | launch files for the whole chain |
+
+Run the tests with:
+
+```sh
+python3 -m pytest src/rkk_hand_bridge/test/
+```
+
+---
 
 ## Running
 
-First, bring up the upstream chain (the driver + solver this bridge
-connects to) — see [Running the upstream chain](#running-the-upstream-chain)
-below for what those two processes are and why nothing else is needed.
-
-**Option A — one command starts everything**, including the solver:
+Start everything — driver, solver and bridge — with one command:
 
 ```sh
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py
 ```
 
-This spawns the solver and the bridge together, using the command in
-`config/upstream.yaml` — `rkk-hand-solver --emit-openxr` plus its
-`--driver-arg` values, which makes the solver start `rokoko-sdk` itself.
-See [Configuring the solver and driver](#configuring-the-solver-and-driver)
-to change that command.
-
-**Option B — attach to a solver that's already running** (e.g. you started
-it by hand, or another tool already has it up):
+To also open RViz, and draw the hands in it:
 
 ```sh
-ros2 launch rkk_hand_bringup smartglove_hands.launch.py spawn_solver:=false
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
+  publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
-**Option C — just the bridge**, no bringup package involved:
+Ctrl-C stops the bridge, the solver and the driver together.
+
+**Attaching to a solver that is already running** — start the bridge alone:
 
 ```sh
 ros2 launch rkk_hand_bridge hand_bridge.launch.py
 ```
 
-Useful launch arguments (pass as `name:=value`): `solver_host`,
-`solver_port` (default `12277`), `publish_tf` (default `false`),
-`publish_markers` (default `false`), `marker_lifetime_s` (default
-`0.5`), `marker_rate_hz` (default `30`, shared across hands),
-`marker_hand_spacing_m` (default `0.45`), `marker_joint_scale`,
-`marker_max_joint_radius_m`, `parent_frame_id` (required if `publish_tf` or `publish_markers`
-is set), `stamp_source` (default `auto`), `calibrate_facing_rad`,
-`calibrate_max_disagreement_rad` (default 30 degrees in radians).
-`rkk_hand_bringup` additionally
-takes `spawn_solver` (default `true`), `config` and `rviz` (default
-`false`) — see below.
+The commands used for the driver and solver come from a config file — see
+[Upstream config file](#upstream-config-file) to change them.
 
-### Configuring the solver and driver
+### Checking it works
 
-The solver and driver are plain subprocesses, not ROS nodes, so their
-arguments don't come from a ROS parameter file. `rkk_hand_bringup` reads
-them from `config/upstream.yaml`, which *is* the default — there is no
-second set of defaults hidden in the launch file:
-
-```yaml
-solver:
-  executable: rkk-hand-solver
-  args: ["--emit-openxr"]
-  driver_args: ["--auto-stream-usb", "-ef", "1024"]
-```
-
-`args` is passed through verbatim, and each entry of `driver_args` is
-forwarded as `--driver-arg=<value>`. `config:=/path/to/my.yaml` merges
-over this file, so a partial file only needs the keys it changes.
-
-Whether a driver gets started is therefore decided by what you put in
-`args`, not by the launch file. With the file above the solver spawns
-`rokoko-sdk` itself, applying its own built-in defaults
-(`-vv --auto-stream-usb`) with `driver_args` appended after them — which
-means `driver_args` can only *add* arguments, never remove a solver
-default. Put `--no-driver` in `args` to attach to a driver you started
-yourself.
-
-To remove a solver default you need the launch file to run the driver, so
-add an optional `driver` section giving the complete command. That is the
-case for **gloves on WiFi rather than USB**: WiFi is the driver's native
-path (it is a UDP server on `--driver-udp-port`, default `14041`), and
-`--auto-stream-usb` exists only to make USB/serial devices behave the way
-WiFi ones already do.
-
-```yaml
-solver:
-  args: ["--emit-openxr", "--no-driver"]
-driver:
-  executable: rokoko-sdk
-  args: ["-vv", "-ef", "1024"]
-```
-
-A `driver` section without `--no-driver` in `solver.args` is rejected at
-launch, since both would start a driver. WiFi gloves must also be on the
-same network and pointed at this machine's LAN address, not `127.0.0.1`.
-
-`spawn_solver:=false` starts the bridge alone.
-
-## Verifying it's working
-
-With the bridge running (any option above), in another sourced shell:
+In another sourced shell:
 
 ```sh
 ros2 topic list
@@ -155,205 +192,207 @@ ros2 topic echo /rkk_hand_bridge/hand/joints --once
 ros2 topic echo /diagnostics --once
 ```
 
-To calibrate yaw (hold a hand toward whatever direction `calibrate_facing_rad`
-represents, default straight ahead, then call):
+`hand/description` should name your device and list 26 joints;
+`hand/joints` should show changing pose data as you move your hand.
+
+---
+
+## Published interface
+
+| Name | Type | Notes |
+| --- | --- | --- |
+| `/rkk_hand_bridge/hand/description` | `rkk_hand_msgs/HandDescription` | one per hand, latched: device id, handedness, joint names and radii |
+| `/rkk_hand_bridge/hand/joints` | `rkk_hand_msgs/HandJoints` | one per solved frame: 26 joint poses |
+| `/rkk_hand_bridge/hand/markers` | `visualization_msgs/MarkerArray` | RViz drawing, off unless `publish_markers` is set |
+| `/tf` | `tf2_msgs/TFMessage` | one transform per joint, off unless `publish_tf` is set |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | per-hand health, published every second |
+| `/rkk_hand_bridge/calibrate` | `std_srvs/Trigger` | see [Calibrating](#calibrating) |
+
+Joints are in `XrHandJointEXT` order and match `joint_names` in the
+description. TF frames are named `rkk_<hand>_hand_xr_<joint_name>`.
+
+Two gloves are supported, one left and one right. Two gloves of the same
+handedness are not.
+
+---
+
+## Calibrating
+
+The solver streams poses referenced to magnetic north, so until you
+calibrate, the hand is correct in shape but rotated by an arbitrary amount
+about the vertical axis.
+
+1. Hold your hand **level**, fingers pointing in the direction you want to
+   become "forward".
+2. With two gloves, point **both hands the same way**.
+3. Call:
 
 ```sh
 ros2 service call /rkk_hand_bridge/calibrate std_srvs/srv/Trigger {}
 ```
 
-`/diagnostics` should show `WARN`/"connected, yaw uncalibrated" before this
-and `OK`/"connected" immediately after a successful call.
-
-**The offset is shared by every connected hand.** It corrects for
-magnetic-north referencing, which is a property of the room rather than
-of a glove, so one call calibrates all of them. The measurement comes
-from a single hand — the lowest `device_id`, chosen so repeated calls
-give the same answer — and the reply names it:
+A successful call names the hand it measured:
 
 ```
-calibrated yaw offset to -2.834 rad from the left hand (device 843143769)
+success: true
+message: calibrated yaw offset to -2.834 rad from the left hand (device 843143769)
 ```
 
-Because one hand's heading is applied to all, the hands have to agree.
-If they are pointing more than `calibrate_max_disagreement_rad` apart
-(default 30 degrees) the call is refused rather than silently applying
-one hand's correction to the other:
+`/diagnostics` moves from `WARN`/"connected, yaw uncalibrated" to
+`OK`/"connected" immediately, and RViz updates on the next frame. One
+offset applies to every connected hand. Re-run it whenever you like.
 
-```
-hands disagree by 45 degrees; calibrate with every hand facing the same
-way, or raise calibrate_max_disagreement_rad (now 30 degrees)
-```
+"Forward" defaults to the parent frame's +X axis; `calibrate_facing_rad`
+changes that.
 
-Nothing changes when a call is refused — the previous offset stays in
-place, and `/diagnostics` keeps reporting uncalibrated if it was.
+---
 
 ## Visualizing in RViz
 
-`HandJoints` is a custom message, so RViz has no built-in display for it.
-The bridge offers two opt-in ways to draw the hand instead, both built from
-the same rebased poses it publishes, and both needing a non-empty
-`parent_frame_id` (the bridge refuses to guess one):
+`HandJoints` is a custom message, so RViz cannot draw it directly. Two
+options, both off by default and both needing `parent_frame_id`:
 
-- **`publish_markers`** — a `visualization_msgs/MarkerArray` on
-  `~/hand/markers`: a sphere per joint, sized from the description's
-  `joint_radii`, joined by a line skeleton. This is the one that looks
-  like a hand.
-- **`publish_tf`** — the raw TF broadcast: a full coordinate frame per
-  joint. Correct and useful for debugging orientations, but 26 axis
-  triads per hand read as clutter rather than as a hand.
+- **`publish_markers`** — a sphere per joint joined by a skeleton. This is
+  the one that looks like a hand.
+- **`publish_tf`** — a coordinate frame per joint. Useful for checking
+  orientations, cluttered as a picture of a hand.
 
 ```sh
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
   publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
-`rviz:=true` just starts `rviz2` alongside the bridge; no config is
-passed, so RViz opens with its own settings and keeps whatever you last
-saved. Leave it off and run `rviz2` yourself if you prefer.
+`rviz:=true` starts RViz with its own saved settings. Set it up once:
 
-**Setting the display up, once.** In RViz:
-
-1. **Global Options** (top-left) → **Fixed Frame** → `world`, or whatever
-   you passed as `parent_frame_id`.
+1. **Global Options** → **Fixed Frame** → `world` (or your
+   `parent_frame_id`).
 2. **Add** → **By topic** → `/rkk_hand_bridge/hand/markers` →
    **MarkerArray**.
+3. **File → Save Config**, and it reopens that way.
 
-Then **File → Save Config** (Ctrl-S) and RViz will reopen like that every
-time.
-
-RViz needs the fixed frame to exist in TF before it will draw anything
-positioned in it, which is why the command above also passes
-`publish_tf:=true` — it costs you no clutter unless you add a TF display,
-it just gives the frame something to exist in. That does tie the frame's
-existence to the data stream, so if the gloves drop out the frame goes
-with them. Anchoring it independently avoids that:
+RViz needs the fixed frame to exist in TF before it draws anything, which
+is why the command above also passes `publish_tf:=true`. If your gloves
+drop out, the frame goes with them; anchor it independently to avoid that:
 
 ```sh
 ros2 run tf2_ros static_transform_publisher --frame-id world --child-frame-id rkk_hand_anchor
 ```
 
-**If the hand flickers**, check any **Grid** display you have added. A
-fine grid (10cm cells, say) puts semi-transparent lines straight through
-the markers at z=0, and transparent geometry intersecting the spheres
-makes the renderer's depth sorting unstable — which looks like the whole
-hand blinking. A coarse grid (1m cells, RViz's default) keeps its lines
-clear of the hand entirely.
+Each hand gets its own RViz namespaces — `rkk_<hand>_hand/joints` and
+`rkk_<hand>_hand/bones` — so spheres and skeleton can be toggled
+separately. Connected hands are drawn side by side rather than stacked.
 
-Every connected hand appears automatically, left and right in different
-colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
-namespace each — so you can toggle spheres and skeleton independently in
-the display's **Namespaces** list.
+---
 
-Markers are drawn fully opaque. Anything translucent lands in the
-renderer's transparent queue, where 26 overlapping spheres cost fill rate
-proportional to the window's pixel count — which showed up as the hand
-flickering once the RViz window was maximised, and did not improve with a
-lower `marker_rate_hz`, since the cost is per drawn frame rather than per
-message.
+## Configuration
 
-Connected hands are drawn side by side rather than on top of each other:
-both gloves report wrist-relative poses, so at true scale they sit in the
-same place and overlap into one tangle. `marker_hand_spacing_m` (default
-`0.45`) fans them out along +Y, centred on `parent_frame_id`'s origin —
-two hands land at ∓0.225m, three at −0.45/0/+0.45, and a single hand
-stays exactly at the origin. `marker_hand_spacing_m:=0.0` stacks them
-again.
+### Node parameters
 
-Slots are assigned by sorted `device_id`, so a hand keeps its side of the
-scene across reconnects instead of hopping when packets arrive in a
-different order.
+Every parameter can be set as a launch argument (`name:=value`) or changed
+on a running node with `ros2 param set /rkk_hand_bridge <name> <value>`.
+Numeric parameters are doubles, so write `0.0`, not `0`.
 
-**This shifts the drawing only.** `hand/joints` and `/tf` publish the
-true, unshifted poses — anything consuming the data still sees both hands
-where they physically are. Only what RViz draws is spread out.
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `solver_host` | `127.0.0.1` | where the solver is |
+| `solver_port` | `12277` | solver's port |
+| `reconnect_delay_s` | `0.5` | wait before retrying a lost connection; doubles up to 10s |
+| `stamp_source` | `auto` | `auto`, `epoch`, `offset` or `receive` — how `header.stamp` is derived |
+| `parent_frame_id` | *(empty)* | frame TF and markers are published in; required for either |
+| `publish_tf` | `false` | broadcast a transform per joint |
+| `publish_markers` | `false` | publish RViz markers |
+| `marker_rate_hz` | `30.0` | marker updates per second, shared across all hands |
+| `marker_lifetime_s` | `0.5` | how long a marker survives without an update |
+| `marker_joint_scale` | `1.0` | scales every joint sphere |
+| `marker_max_joint_radius_m` | `0.010` | caps sphere size so wrists don't swamp fingers |
+| `marker_hand_spacing_m` | `0.45` | how far apart hands are drawn |
+| `calibrate_facing_rad` | `0.0` | direction calibration treats as forward |
+| `calibrate_max_disagreement_rad` | `30°` | how far apart hands may point when calibrating |
 
-Marker namespaces and TF frame ids are keyed on handedness, so **two
-gloves of the same handedness are not supported** — one left and one
-right is the case this handles. `hand/joints` still carries `device_id`
-and stays unambiguous either way.
+Marker parameters affect the drawing only. `hand/joints` and `/tf` always
+carry every frame of every hand at full rate.
 
-Markers carry a `marker_lifetime_s` (default `0.5`) lifetime, so if the
-stream stops they fade out instead of leaving a frozen hand on screen; a
-hand that disconnects cleanly clears itself immediately.
+Defaults live in
+`ros2_ws/src/rkk_hand_bridge/rkk_hand_bridge/constants.py`. Change them
+there and rebuild to change them permanently.
 
-They are also throttled to `marker_rate_hz` (default `30`), well below
-the solver's frame rate. A hand is 27 markers per frame, so at the
-solver's 83Hz that is ~2250 markers/second, and markers are for a human
-watching a screen rather than for consumers of the data. The throttle
-brings it to ~750/s.
+### Launch arguments
 
-**`marker_rate_hz` is a total budget, not a per-hand rate.** Every
-connected hand shares it, so two gloves get roughly 15Hz each rather than
-30Hz each, and what RViz has to draw stays flat as gloves are added
-instead of doubling. Measured with two hands fed at 83Hz each: ~28 marker
-arrays/second in total, the same as one hand.
+`rkk_hand_bringup`'s launch file adds:
 
-This affects the drawing only. `hand/joints` and `/tf` carry every frame
-of every hand regardless — with two hands the same run measured `/tf` at
-166Hz, both hands at full rate. Turn markers down, or off, without
-touching what your consumers receive.
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| `spawn_solver` | `true` | start the solver, or attach to a running one |
+| `config` | *(packaged file)* | upstream config file, see below |
+| `rviz` | `false` | open RViz alongside the bridge |
 
-`marker_rate_hz:=0.0` publishes one array per frame per hand. Note it is
-a double, so `0.0` — a bare `0` is rejected as the wrong parameter type.
+### Upstream config file
 
-To see joint frames as well, add a **TF** display yourself (**Add** →
-**By display type** → **TF**) and turn its **Marker Scale** down to
-`0.02`–`0.05` — TF's default is meant for room-scale robots and a hand's
-joints are centimeters apart. **Show Names** labels them
-`rkk_<hand>_hand_xr_<joint_name>`.
+The solver and driver are ordinary programs rather than ROS nodes, so
+their command lines live in a config file rather than being ROS
+parameters:
 
-### Sizing the joint spheres
+**`ros2_ws/src/rkk_hand_bringup/config/upstream.yaml`**
 
-OpenXR reports the wrist and palm at their true anatomical radii, several
-times a fingertip's. Drawn to scale they swamp the fingers — a wrist
-sphere comes out around 64mm across on a hand about 180mm long — so
-`marker_max_joint_radius_m` (default `0.010`) caps how big a sphere gets
-drawn. Capping changes drawn size only: a sphere's *centre* is the exact
-joint position either way, so nothing about positional accuracy is lost.
-`marker_joint_scale` (default `1.0`) shrinks every sphere proportionally
-if you want the whole hand daintier, and `marker_max_joint_radius_m:=0.0`
-disables the cap for true-to-life radii.
-
-Both are ordinary node parameters read per frame, so you can dial them in
-against a live hand without restarting anything:
-
-```sh
-ros2 param set /rkk_hand_bridge marker_max_joint_radius_m 0.008
+```yaml
+solver:
+  executable: rkk-hand-solver
+  args: ["--emit-openxr"]
+  driver_args: ["--auto-stream-usb", "-ef", "1024"]
 ```
 
-Until `~/calibrate` has been called, expect the hand to be rotated by some
-arbitrary amount around the vertical axis — that's expected (see the design
-docs' timestamp/calibration notes), not a bug.
+`args` runs the solver as written, and each entry of `driver_args` is
+forwarded on to the driver. What those arguments mean is covered by the
+Rokoko Device SDK's own documentation. `--emit-openxr` is the one this
+bridge depends on: it is the joint group the bridge reads.
 
-## Running the upstream chain
+Edit that file, or point `config:=/path/to/my.yaml` at your own. Keys you
+leave out fall back to the packaged file, so a partial file is fine.
 
-This bridge is a plain RGMP v2 client of `rkk-hand-solver`'s solved-hand
-output — it needs exactly two other processes running, nothing more:
+To run the driver yourself rather than have the solver start it, add a
+`driver` section and give the solver `--no-driver`:
 
-```sh
-# 1. The SmartGlove driver. -ef 1024 enables experimental epoch timestamps,
-#    which this bridge prefers when available (see the timestamp handling
-#    in the design docs) — verify the exact flag name against
-#    `rokoko-sdk --help` on your build, long and short forms can vary.
-rokoko-sdk -vv --auto-stream-usb -ef 1024
+```yaml
+solver:
+  executable: rkk-hand-solver
+  args: ["--emit-openxr", "--no-driver"]
 
-# 2. The hand solver, attaching to the driver already running above.
-#    --emit-openxr is the only group this bridge reads.
-rkk-hand-solver --emit-openxr --no-driver
+driver:
+  executable: rokoko-sdk
+  args: ["-vv", "-ef", "1024"]
 ```
 
-`rkk_hand_bringup`'s launch file (Option A/B above) manages step 2 for you;
-step 1 (the driver) is always your responsibility to start separately.
+That is also how to change the driver's arguments for **gloves on WiFi
+rather than USB** — again, see the SDK documentation for which arguments
+those are. WiFi gloves must be on the same network as this machine and
+pointed at its LAN address rather than `127.0.0.1`.
 
-## Status
+---
 
-Implemented and verified against real, physically-connected SmartGlove
-hardware: `rkk_hand_msgs` interfaces, the full `rkk_hand_bridge` node
-(connect/decode/reconnect, `hand/description`, `hand/joints`, opt-in TF,
-`~/calibrate`, `/diagnostics`), and both launch packages.
+## Troubleshooting
 
-A few things are known-incomplete rather than silently assumed solid —
-see `.claude/plan.md`'s "Bugs found during implementation" and
-"Known-untested paths" sections for the current list (not tracked in git,
-so ask if you want a copy).
+**`ros2: command not found`** — source ROS 2:
+`source /opt/ros/lyrical/setup.bash`.
+
+**`Package 'rkk_hand_bringup' not found`** — source the workspace:
+`source install/setup.bash` from `ros2_ws`, after `colcon build`.
+
+**`cannot reach the RGMP v2 server at 127.0.0.1:12276`** — the solver is
+running but the driver is not. Start `rokoko-sdk`, or let the launch file
+do it.
+
+**No joints, and a warning about `joints_openxr`** — the solver was started
+without `--emit-openxr`. `/diagnostics` reports this as an error naming the
+device.
+
+**`RBDP Protocol Error` / `Could not create device`** — the driver cannot
+talk to the hub. Usually a stale process still holding the USB device:
+check `pgrep -x rokoko-sdk`, kill it, and replug the hub.
+
+**Nothing appears in RViz** — check the Fixed Frame matches
+`parent_frame_id`, that you added the MarkerArray display on
+`/rkk_hand_bridge/hand/markers`, and that `publish_markers:=true` was
+passed.
+
+**Hand is rotated the wrong way** — call the calibrate service, see
+[Calibrating](#calibrating).
