@@ -1,9 +1,8 @@
 """Fixed xr_base -> ROS rebase, plus yaw calibration.
 
 xr_base (the solved hand's frame) is Y-up; ROS (REP-103) is Z-up. The
-fixed rebase mirrors the SDK's existing Isaac Lab bridge: a +90°
-rotation about X, leaving X unchanged. Giving that axis real-world
-meaning is calibration's job, not this rotation's.
+fixed rebase is a +90° rotation about X, leaving X unchanged. Giving
+that axis real-world meaning is calibration's job, not this rotation's.
 """
 
 import math
