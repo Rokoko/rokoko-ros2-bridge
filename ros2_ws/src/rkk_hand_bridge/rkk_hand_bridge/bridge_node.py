@@ -177,7 +177,7 @@ class BridgeNode(Node):
             if self._last_timestamp_us.get(device_id) == frame.timestamp_us:
                 continue
             self._last_timestamp_us[device_id] = frame.timestamp_us
-            self._publish_joints(definition, frame)
+            self._publish_joints(definition, frame, len(hands))
 
         self._publish_diagnostics(hands)
 
@@ -191,7 +191,7 @@ class BridgeNode(Node):
         msg.joint_radii = list(definition.joint_radii)
         self._description_pub.publish(msg)
 
-    def _publish_joints(self, definition, frame):
+    def _publish_joints(self, definition, frame, hand_count: int):
         converter = fc.XrToRosConverter(yaw_rad=self._yaw_offset)
         stamp_source = self._stamp_source_for(frame.device_id)
 
@@ -220,7 +220,7 @@ class BridgeNode(Node):
             self._broadcast_tf(definition, converted, stamp)
 
         if self.get_parameter("publish_markers").value:
-            self._publish_markers(definition, converted, stamp)
+            self._publish_markers(definition, converted, stamp, hand_count)
 
     def _stamp_source_for(self, device_id: int) -> StampSource:
         mode = self.get_parameter("stamp_source").value
@@ -249,23 +249,22 @@ class BridgeNode(Node):
             transforms.append(t)
         self._tf_broadcaster.sendTransform(transforms)
 
-    def _due_for_markers(self, device_id: int) -> bool:
-        """Markers are for a human watching a screen, not for consumers of
-        the data, so they are throttled well below the solver's frame rate
-        - a hand at 83Hz is 27 markers per frame, which buries RViz and
-        shows up as flicker rather than as smoothness."""
+    def _due_for_markers(self, device_id: int, hand_count: int) -> bool:
+        """marker_rate_hz is a budget shared by every connected hand, so
+        what RViz has to draw does not grow as gloves are added."""
         rate_hz = self.get_parameter("marker_rate_hz").value
         if rate_hz <= 0.0:
-            return True  # 0 disables throttling: one array per frame
+            return True
+        period_ns = 1e9 * max(hand_count, 1) / rate_hz
         now_ns = self.get_clock().now().nanoseconds
         last_ns = self._last_marker_ns.get(device_id)
-        if last_ns is not None and now_ns - last_ns < 1e9 / rate_hz:
+        if last_ns is not None and now_ns - last_ns < period_ns:
             return False
         self._last_marker_ns[device_id] = now_ns
         return True
 
-    def _publish_markers(self, definition, converted, stamp: TimeMsg):
-        if not self._due_for_markers(definition.device_id):
+    def _publish_markers(self, definition, converted, stamp: TimeMsg, hand_count: int):
+        if not self._due_for_markers(definition.device_id, hand_count):
             return
 
         frame_id = self.get_parameter("parent_frame_id").value

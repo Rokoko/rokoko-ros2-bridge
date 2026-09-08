@@ -2,6 +2,7 @@ import json
 import queue
 import struct
 import time
+from types import SimpleNamespace
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
@@ -454,12 +455,9 @@ def test_markers_are_throttled_below_the_frame_rate():
             stream=stream,
             parameter_overrides=[Parameter("marker_rate_hz", value=30.0)],
         )
-        # Two frames back to back arrive far faster than 1/30s apart, so
-        # only the first is due.
-        assert node._due_for_markers(7) is True
-        assert node._due_for_markers(7) is False
-        # a second hand is throttled independently
-        assert node._due_for_markers(8) is True
+        assert node._due_for_markers(7, 1) is True
+        assert node._due_for_markers(7, 1) is False
+        assert node._due_for_markers(8, 1) is True
 
         node.destroy_node()
     finally:
@@ -475,7 +473,37 @@ def test_a_zero_marker_rate_publishes_every_frame():
             stream=stream,
             parameter_overrides=[Parameter("marker_rate_hz", value=0.0)],
         )
-        assert all(node._due_for_markers(7) for _ in range(5))
+        assert all(node._due_for_markers(7, 1) for _ in range(5))
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_two_hands_share_one_marker_budget():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("marker_rate_hz", value=30.0)],
+        )
+        clock_ns = [0]
+        node.get_clock().now = lambda: SimpleNamespace(nanoseconds=clock_ns[0])
+
+        assert node._due_for_markers(7, 2) is True
+        assert node._due_for_markers(8, 2) is True
+
+        # 1/30s in: with one hand each would be due again, but the budget
+        # is shared, so each hand only gets half of it.
+        clock_ns[0] = int(1e9 / 30) + 1
+        assert node._due_for_markers(7, 2) is False
+        assert node._due_for_markers(8, 2) is False
+
+        clock_ns[0] = int(2 * 1e9 / 30) + 1
+        assert node._due_for_markers(7, 2) is True
+        assert node._due_for_markers(8, 2) is True
 
         node.destroy_node()
     finally:

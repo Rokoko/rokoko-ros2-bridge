@@ -88,7 +88,8 @@ ros2 launch rkk_hand_bridge hand_bridge.launch.py
 Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `publish_markers` (default `false`), `marker_lifetime_s` (default
-`0.5`), `marker_rate_hz` (default `30`), `marker_joint_scale`,
+`0.5`), `marker_rate_hz` (default `30`, shared across hands),
+`marker_joint_scale`,
 `marker_max_joint_radius_m`, `parent_frame_id` (required if `publish_tf` or `publish_markers`
 is set), `stamp_source` (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
 takes `spawn_solver` (default `true`), `config` and `rviz` (default
@@ -227,10 +228,21 @@ They are also throttled to `marker_rate_hz` (default `30`), well below
 the solver's frame rate. A hand is 27 markers per frame, so at the
 solver's 83Hz that is ~2250 markers/second, and markers are for a human
 watching a screen rather than for consumers of the data. The throttle
-brings it to ~750/s; the data topics (`hand/joints`, `/tf`) still run at
-the full frame rate and are unaffected. `marker_rate_hz:=0.0` publishes
-one array per frame. Note it is a double, so `0.0` — a bare `0` is
-rejected as the wrong parameter type.
+brings it to ~750/s.
+
+**`marker_rate_hz` is a total budget, not a per-hand rate.** Every
+connected hand shares it, so two gloves get roughly 15Hz each rather than
+30Hz each, and what RViz has to draw stays flat as gloves are added
+instead of doubling. Measured with two hands fed at 83Hz each: ~28 marker
+arrays/second in total, the same as one hand.
+
+This affects the drawing only. `hand/joints` and `/tf` carry every frame
+of every hand regardless — with two hands the same run measured `/tf` at
+166Hz, both hands at full rate. Turn markers down, or off, without
+touching what your consumers receive.
+
+`marker_rate_hz:=0.0` publishes one array per frame per hand. Note it is
+a double, so `0.0` — a bare `0` is rejected as the wrong parameter type.
 
 To see joint frames as well, add a **TF** display yourself (**Add** →
 **By display type** → **TF**) and turn its **Marker Scale** down to
