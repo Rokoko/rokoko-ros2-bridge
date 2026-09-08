@@ -624,7 +624,7 @@ class _OneUpdateStream:
 
     def wait(self, seen, timeout=None):
         if self.woken:
-            raise TimeoutError("idle")
+            return seen
         self.woken = True
         return seen + 1
 

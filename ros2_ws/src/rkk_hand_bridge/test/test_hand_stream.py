@@ -306,3 +306,18 @@ def test_stopping_before_a_connection_lands_closes_it():
     assert started.wait(2.0)
     stream.stop()
     assert closed, "a socket that arrived after stop() was never closed"
+
+
+def test_wait_reports_a_timeout_by_returning_what_was_seen():
+    stream = HandStream("h", 0, connect=lambda: FeedableSocket())
+    assert stream.wait(0, timeout=0.05) == 0
+
+
+def test_wait_returns_none_once_stopped():
+    stream = HandStream("h", 0, connect=lambda: FeedableSocket())
+    stream.start()
+    try:
+        stream.stop()
+        assert stream.wait(0, timeout=0.05) is None
+    finally:
+        stream.stop()

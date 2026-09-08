@@ -74,13 +74,16 @@ class HandStream:
         with self._cond:
             return dict(self._frames)
 
-    def wait(self, seen: int = 0, timeout: float | None = None) -> int:
+    def wait(self, seen: int = 0, timeout: float | None = None) -> int | None:
+        """The generation once it differs from `seen`, `seen` itself if
+        `timeout` passed with no change, or None once the stream is
+        stopped."""
         with self._cond:
-            changed = self._cond.wait_for(
+            self._cond.wait_for(
                 lambda: self._generation != seen or self._stop.is_set(), timeout
             )
-            if not changed:
-                raise TimeoutError(f"no update within {timeout}s")
+            if self._stop.is_set():
+                return None
             return self._generation
 
     def _run(self):

@@ -174,10 +174,12 @@ class BridgeNode(Node):
     def _watch(self):
         seen = 0
         while not self._stopping.is_set():
-            try:
-                seen = self._stream.wait(seen, timeout=1.0)
-            except TimeoutError:
+            generation = self._stream.wait(seen, timeout=1.0)
+            if generation is None:
+                return
+            if generation == seen:
                 continue
+            seen = generation
             if self._stopping.is_set() or not self.context.ok():
                 return
             try:
