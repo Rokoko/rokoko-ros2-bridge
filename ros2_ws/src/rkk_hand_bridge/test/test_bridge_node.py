@@ -783,3 +783,57 @@ def test_calibrate_is_deterministic_across_two_hands():
         recorder.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_two_hands_are_drawn_apart_but_published_together():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(
+            stream=HandStream("h", 0, connect=lambda: sock),
+            parameter_overrides=[
+                Parameter("publish_markers", value=True),
+                Parameter("parent_frame_id", value="world"),
+                Parameter("marker_hand_spacing_m", value=0.4),
+            ],
+        )
+        recorder = rclpy.create_node("recorder")
+        markers, joints = [], []
+        sub = recorder.create_subscription(
+            MarkerArray, "/rkk_hand_bridge/hand/markers", markers.append, 10
+        )
+        recorder.create_subscription(
+            HandJoints, "/rkk_hand_bridge/hand/joints", joints.append, _SENSOR_QOS
+        )
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes(device_id=7, hand="left"))
+        sock.feed(_definition_bytes(device_id=8, hand="right"))
+        assert _spin_until(executor, lambda: sub.get_publisher_count() > 0, 5.0)
+        sock.feed(_data_bytes(device_id=7))
+        sock.feed(_data_bytes(device_id=8))
+        assert _spin_until(
+            executor,
+            lambda: {m.ns.split("_")[1] for a in markers for m in a.markers} == {"left", "right"},
+            5.0,
+        )
+
+        drawn = {}
+        for array in markers:
+            for marker in array.markers:
+                if marker.type == Marker.SPHERE and marker.id == 0:
+                    drawn[marker.ns] = marker.pose.position.y
+        assert drawn["rkk_left_hand/joints"] == -0.2
+        assert drawn["rkk_right_hand/joints"] == 0.2
+
+        # the data carries no such offset: every joint is still at the origin
+        assert joints
+        assert all(j.joints[0].position.y == 0.0 for j in joints)
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()

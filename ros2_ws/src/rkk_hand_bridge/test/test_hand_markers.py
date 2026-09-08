@@ -139,3 +139,35 @@ def test_deletion_clears_both_namespaces_for_one_hand():
     assert [m.action for m in array.markers] == [Marker.DELETEALL, Marker.DELETEALL]
     assert all("left" in m.ns for m in array.markers)
     assert len({m.ns for m in array.markers}) == 2
+
+
+def test_a_single_hand_sits_at_the_origin():
+    assert hand_markers.slot_offset(0, 1, 0.45) == (0.0, 0.0, 0.0)
+
+
+def test_two_hands_straddle_the_origin():
+    assert hand_markers.slot_offset(0, 2, 0.45) == (0.0, -0.225, 0.0)
+    assert hand_markers.slot_offset(1, 2, 0.45) == (0.0, 0.225, 0.0)
+
+
+def test_three_hands_stay_centred():
+    offsets = [hand_markers.slot_offset(i, 3, 0.4)[1] for i in range(3)]
+    assert offsets == [-0.4, 0.0, 0.4]
+
+
+def test_zero_spacing_stacks_them():
+    assert hand_markers.slot_offset(1, 2, 0.0) == (0.0, 0.0, 0.0)
+
+
+def test_the_offset_moves_spheres_and_bones_together():
+    offset = (0.0, 0.25, 0.0)
+    plain = _build()
+    moved = hand_markers.build(
+        "right", _JOINT_NAMES, [0.01] * len(_JOINT_NAMES), _converted(_JOINT_NAMES),
+        "world", TimeMsg(sec=1), DurationMsg(sec=1), offset=offset,
+    )
+    for before, after in zip(_spheres(plain), _spheres(moved)):
+        assert after.pose.position.y == before.pose.position.y + 0.25
+        assert after.pose.position.x == before.pose.position.x
+    for before, after in zip(_bones(plain).points, _bones(moved).points):
+        assert after.y == before.y + 0.25

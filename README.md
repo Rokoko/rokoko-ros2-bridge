@@ -89,7 +89,7 @@ Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `publish_markers` (default `false`), `marker_lifetime_s` (default
 `0.5`), `marker_rate_hz` (default `30`, shared across hands),
-`marker_joint_scale`,
+`marker_hand_spacing_m` (default `0.45`), `marker_joint_scale`,
 `marker_max_joint_radius_m`, `parent_frame_id` (required if `publish_tf` or `publish_markers`
 is set), `stamp_source` (default `auto`), `calibrate_facing_rad`,
 `calibrate_max_disagreement_rad` (default 30 degrees in radians).
@@ -244,6 +244,22 @@ Every connected hand appears automatically, left and right in different
 colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
 namespace each — so you can toggle spheres and skeleton independently in
 the display's **Namespaces** list.
+
+Connected hands are drawn side by side rather than on top of each other:
+both gloves report wrist-relative poses, so at true scale they sit in the
+same place and overlap into one tangle. `marker_hand_spacing_m` (default
+`0.45`) fans them out along +Y, centred on `parent_frame_id`'s origin —
+two hands land at ∓0.225m, three at −0.45/0/+0.45, and a single hand
+stays exactly at the origin. `marker_hand_spacing_m:=0.0` stacks them
+again.
+
+Slots are assigned by sorted `device_id`, so a hand keeps its side of the
+scene across reconnects instead of hopping when packets arrive in a
+different order.
+
+**This shifts the drawing only.** `hand/joints` and `/tf` publish the
+true, unshifted poses — anything consuming the data still sees both hands
+where they physically are. Only what RViz draws is spread out.
 
 Marker namespaces and TF frame ids are keyed on handedness, so **two
 gloves of the same handedness are not supported** — one left and one

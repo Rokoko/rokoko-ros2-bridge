@@ -72,6 +72,11 @@ def _point(position: Vec3) -> Point:
     return Point(x=position[0], y=position[1], z=position[2])
 
 
+def slot_offset(slot: int, hand_count: int, spacing_m: float) -> Vec3:
+    """Fans hands out along +Y, centred on the parent frame's origin."""
+    return (0.0, (slot - (hand_count - 1) / 2.0) * spacing_m, 0.0)
+
+
 def build(
     hand: str,
     joint_names,
@@ -82,16 +87,21 @@ def build(
     lifetime,
     scale: float = 1.0,
     max_radius_m: float = _DEFAULT_MAX_RADIUS_M,
+    offset: Vec3 = (0.0, 0.0, 0.0),
 ) -> MarkerArray:
     """`converted` is the (position, orientation) list also published as
-    HandJoints and TF. Bones whose joints are absent are skipped."""
+    HandJoints and TF; `offset` moves the drawing only. Bones whose joints
+    are absent are skipped."""
+    placed = [
+        ((p[0] + offset[0], p[1] + offset[1], p[2] + offset[2]), q) for p, q in converted
+    ]
     array = MarkerArray()
     array.markers.extend(
-        _joint_spheres(hand, joint_names, joint_radii, converted, frame_id, stamp,
+        _joint_spheres(hand, joint_names, joint_radii, placed, frame_id, stamp,
                        lifetime, scale, max_radius_m)
     )
     array.markers.append(
-        _bone_skeleton(hand, joint_names, converted, frame_id, stamp, lifetime)
+        _bone_skeleton(hand, joint_names, placed, frame_id, stamp, lifetime)
     )
     return array
 

@@ -91,6 +91,7 @@ class BridgeNode(Node):
         self.declare_parameter("marker_joint_scale", 1.0)
         self.declare_parameter("marker_max_joint_radius_m", 0.010)
         self.declare_parameter("marker_rate_hz", 30.0)
+        self.declare_parameter("marker_hand_spacing_m", 0.45)
         self.declare_parameter("parent_frame_id", "")
         self.declare_parameter("calibrate_facing_rad", 0.0)
         self.declare_parameter("calibrate_max_disagreement_rad", math.radians(30.0))
@@ -186,7 +187,7 @@ class BridgeNode(Node):
             if self._last_timestamp_us.get(device_id) == frame.timestamp_us:
                 continue
             self._last_timestamp_us[device_id] = frame.timestamp_us
-            self._publish_joints(definition, frame, len(hands))
+            self._publish_joints(definition, frame, sorted(hands))
 
         self._publish_diagnostics(hands)
 
@@ -200,7 +201,7 @@ class BridgeNode(Node):
         msg.joint_radii = list(definition.joint_radii)
         self._description_pub.publish(msg)
 
-    def _publish_joints(self, definition, frame, hand_count: int):
+    def _publish_joints(self, definition, frame, device_ids: list[int]):
         converter = fc.XrToRosConverter(yaw_rad=self._yaw_offset)
         stamp_source = self._stamp_source_for(frame.device_id)
 
@@ -229,7 +230,7 @@ class BridgeNode(Node):
             self._broadcast_tf(definition, converted, stamp)
 
         if self.get_parameter("publish_markers").value:
-            self._publish_markers(definition, converted, stamp, hand_count)
+            self._publish_markers(definition, converted, stamp, device_ids)
 
     def _stamp_source_for(self, device_id: int) -> StampSource:
         mode = self.get_parameter("stamp_source").value
@@ -272,8 +273,8 @@ class BridgeNode(Node):
         self._last_marker_ns[device_id] = now_ns
         return True
 
-    def _publish_markers(self, definition, converted, stamp: TimeMsg, hand_count: int):
-        if not self._due_for_markers(definition.device_id, hand_count):
+    def _publish_markers(self, definition, converted, stamp: TimeMsg, device_ids: list[int]):
+        if not self._due_for_markers(definition.device_id, len(device_ids)):
             return
 
         frame_id = self.get_parameter("parent_frame_id").value
@@ -297,6 +298,11 @@ class BridgeNode(Node):
                 lifetime,
                 self.get_parameter("marker_joint_scale").value,
                 self.get_parameter("marker_max_joint_radius_m").value,
+                hand_markers.slot_offset(
+                    device_ids.index(definition.device_id),
+                    len(device_ids),
+                    self.get_parameter("marker_hand_spacing_m").value,
+                ),
             )
         )
 
