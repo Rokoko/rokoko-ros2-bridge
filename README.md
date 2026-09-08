@@ -5,6 +5,8 @@ A ROS 2 bridge for Rokoko SmartGlove solved-hand data. It connects to
 an optional TF broadcast, optional RViz markers, and a yaw-calibration
 service.
 
+![A solved SmartGlove hand moving in RViz](docs/rviz-hand.gif)
+
 - [Prerequisites](#prerequisites)
 - [Installing ROS 2](#installing-ros-2) — [Linux](#linux) · [macOS](#macos) · [Windows](#windows)
 - [Building](#building)
