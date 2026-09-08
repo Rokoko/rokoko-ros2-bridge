@@ -11,7 +11,7 @@ from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
 from visualization_msgs.msg import Marker, MarkerArray
 
-from rkk_hand_bridge import rgmp_client as rgmp
+from rkk_hand_bridge import rgmp
 from rkk_hand_bridge.bridge_node import _LATCHED_QOS, _SENSOR_QOS, BridgeNode
 from rkk_hand_bridge.hand_stream import HandStream
 from rkk_hand_msgs.msg import HandDescription, HandJoints

@@ -6,7 +6,7 @@ import json
 import socket
 import threading
 
-from rkk_hand_bridge import rgmp_client as rgmp
+from rkk_hand_bridge import rgmp
 
 
 class HandStream:

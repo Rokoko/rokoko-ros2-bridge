@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from rkk_hand_bridge import rgmp_client as rgmp
+from rkk_hand_bridge import rgmp
 
 
 class _RecvSocket:

@@ -1,4 +1,4 @@
-"""RGMP v2 framing and solved-hand payload decoding."""
+"""RGMP v2 wire format: framing, and decoding of the solved-hand payloads."""
 
 import json
 import struct

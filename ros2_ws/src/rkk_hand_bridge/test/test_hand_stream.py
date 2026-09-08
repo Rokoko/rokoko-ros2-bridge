@@ -3,7 +3,7 @@ import json
 import struct
 import threading
 
-from rkk_hand_bridge import rgmp_client as rgmp
+from rkk_hand_bridge import rgmp
 from rkk_hand_bridge.hand_stream import HandStream
 
 
