@@ -209,7 +209,8 @@ ros2 topic echo /diagnostics --once
 | `/rkk_hand_bridge/calibrate` | `std_srvs/Trigger` | see [Calibrating](#calibrating) |
 
 Joints are in `XrHandJointEXT` order and match `joint_names` in the
-description. TF frames are named `rkk_<hand>_hand_xr_<joint_name>`.
+description. The `hand` field is `HAND_UNKNOWN`, `HAND_LEFT` or
+`HAND_RIGHT`. TF frames are named `rkk_<hand>_hand_xr_<joint_name>`.
 
 Two gloves are supported, one left and one right. Two gloves of the same
 handedness are not.

@@ -70,7 +70,7 @@ _MARKER_QOS = QoSProfile(
 
 
 def _hand_code(hand: str) -> int:
-    return _HAND_CODE.get(hand, HandDescription.HAND_LEFT)
+    return _HAND_CODE.get(hand, HandDescription.HAND_UNKNOWN)
 
 
 def _stamp_from_ns(stamp_ns: int) -> TimeMsg:
@@ -116,6 +116,7 @@ class BridgeNode(Node):
         self._calibrate_srv = self.create_service(Trigger, "~/calibrate", self._handle_calibrate)
         self._tf_broadcaster = TransformBroadcaster(self)
         self._warned_no_parent_frame = False
+        self._warned_handedness = set()
         self._warned_no_marker_frame = False
         self._last_marker_ns = {}  # device_id -> when markers last went out
 
@@ -155,6 +156,15 @@ class BridgeNode(Node):
 
     def _on_stream_error(self, message: str):
         self.get_logger().warning(f"solver stream: {message}")
+
+    def _warn_unknown_handedness(self, definition):
+        if definition.hand in _HAND_CODE or definition.device_id in self._warned_handedness:
+            return
+        self._warned_handedness.add(definition.device_id)
+        self.get_logger().warning(
+            f"solved hand {definition.device_id}: unrecognised handedness "
+            f"{definition.hand!r}; publishing it as HAND_UNKNOWN"
+        )
 
     def _on_unsupported_hand(self, device_id: int, reason: str):
         with self._state_lock:
@@ -203,6 +213,7 @@ class BridgeNode(Node):
                     self._markers_pub.publish(hand_markers.deletion(hand))
 
         for device_id in new:
+            self._warn_unknown_handedness(hands[device_id])
             self._publish_description(hands[device_id])
 
         for device_id, frame in frames.items():

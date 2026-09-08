@@ -2,8 +2,9 @@
 
 std_msgs/Header header
 
-uint8 HAND_LEFT=0
-uint8 HAND_RIGHT=1
+uint8 HAND_UNKNOWN=0
+uint8 HAND_LEFT=1
+uint8 HAND_RIGHT=2
 uint8 hand
 
 uint32 device_id

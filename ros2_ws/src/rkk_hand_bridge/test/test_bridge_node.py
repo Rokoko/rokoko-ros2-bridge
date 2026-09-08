@@ -844,3 +844,34 @@ def test_two_hands_are_drawn_apart_but_published_together():
         recorder.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_an_unlabelled_hand_is_not_published_as_left():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        recorder = rclpy.create_node("recorder")
+        received = []
+        recorder.create_subscription(
+            HandDescription, "/rkk_hand_bridge/hand/description",
+            received.append, _LATCHED_QOS,
+        )
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes(hand="sideways"))
+        assert _spin_until(executor, lambda: received, 5.0)
+        assert received[0].hand == HandDescription.HAND_UNKNOWN
+        assert node._warned_handedness == {7}
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_an_unset_hand_field_is_unknown_not_left():
+    assert HandDescription().hand == HandDescription.HAND_UNKNOWN
+    assert HandJoints().hand == HandJoints.HAND_UNKNOWN
