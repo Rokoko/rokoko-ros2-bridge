@@ -1,6 +1,6 @@
 import pytest
 
-from rkk_hand_bridge.timestamps import StampSource
+from rkk_hand_bridge.timestamps import OFFSET_WINDOW_NS, StampSource
 
 
 def test_epoch_mode_converts_microseconds_to_nanoseconds():
@@ -31,6 +31,23 @@ def test_offset_mode_tracks_the_running_minimum():
     assert first == 10_000_000
     # smaller offset now applies retroactively to the running estimate
     assert second == 2_000 * 1000 + 8_500_000
+
+
+def test_offset_estimate_forgets_a_stale_minimum():
+    source = StampSource(mode="offset")
+    source.compute(1_000, None, receive_time_ns=10_000_000)  # offset 9_000_000
+    # Far outside the window, and arriving later relative to its own
+    # device time, so the old minimum would pull this stamp backwards.
+    late_us = 1_000 + OFFSET_WINDOW_NS // 1000
+    receive_ns = late_us * 1000 + 50_000_000
+    assert source.compute(late_us, None, receive_time_ns=receive_ns) == receive_ns
+
+
+def test_offset_estimate_keeps_the_minimum_inside_the_window():
+    source = StampSource(mode="offset")
+    source.compute(1_000, None, receive_time_ns=10_000_000)  # offset 9_000_000
+    stamp = source.compute(2_000, None, receive_time_ns=12_000_000)  # candidate 10_000_000
+    assert stamp == 2_000 * 1000 + 9_000_000
 
 
 def test_monotonicity_guard_drops_a_backwards_frame():
