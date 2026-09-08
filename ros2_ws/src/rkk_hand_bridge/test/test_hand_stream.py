@@ -285,3 +285,24 @@ def test_connecting_uses_a_timeout_and_then_blocks_for_reads():
 
     assert captured["timeout"] == hs._CONNECT_TIMEOUT_S
     assert captured["read_timeout"] is None
+
+
+def test_stopping_before_a_connection_lands_closes_it():
+    closed = []
+
+    class _Socket(_InstantlyClosedSocket):
+        def close(self):
+            closed.append(True)
+
+    started = threading.Event()
+
+    def slow_connect():
+        started.set()
+        time.sleep(0.3)
+        return _Socket()
+
+    stream = HandStream("h", 0, reconnect_delay_s=0.01, connect=slow_connect)
+    stream.start()
+    assert started.wait(2.0)
+    stream.stop()
+    assert closed, "a socket that arrived after stop() was never closed"

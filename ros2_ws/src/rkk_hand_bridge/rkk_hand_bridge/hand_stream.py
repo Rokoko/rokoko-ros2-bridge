@@ -36,6 +36,7 @@ class HandStream:
         self._warned = set()
 
         self._stop = threading.Event()
+        self._sock_lock = threading.Lock()
         self._thread = None
         self._sock = None
         self._delivered = False
@@ -53,11 +54,7 @@ class HandStream:
 
     def stop(self):
         self._stop.set()
-        if self._sock is not None:
-            try:
-                self._sock.close()
-            except OSError:
-                pass
+        self._close_socket()
         with self._cond:
             self._cond.notify_all()
         if self._thread is not None:
@@ -90,9 +87,14 @@ class HandStream:
         delay = self._reconnect_delay_s
         while not self._stop.is_set():
             try:
-                self._sock = self._connect()
+                sock = self._connect()
+                with self._sock_lock:
+                    if self._stop.is_set():
+                        sock.close()
+                        return
+                    self._sock = sock
                 self._set_connected(True)
-                self._read_loop(self._sock)
+                self._read_loop(sock)
             except (OSError, EOFError):
                 pass
             except (json.JSONDecodeError, struct.error, KeyError, ValueError) as exc:
@@ -113,12 +115,13 @@ class HandStream:
             self.on_stream_error(message)
 
     def _close_socket(self):
-        if self._sock is not None:
+        with self._sock_lock:
+            sock, self._sock = self._sock, None
+        if sock is not None:
             try:
-                self._sock.close()
+                sock.close()
             except OSError:
                 pass
-            self._sock = None
 
     def _read_loop(self, reader):
         while not self._stop.is_set():
