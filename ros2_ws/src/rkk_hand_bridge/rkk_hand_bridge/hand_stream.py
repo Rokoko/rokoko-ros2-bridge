@@ -4,6 +4,7 @@ queue of stale ones."""
 
 import json
 import socket
+import struct
 import threading
 
 from rkk_hand_bridge import rgmp
@@ -13,12 +14,14 @@ _MAX_RECONNECT_DELAY_S = 10.0
 
 
 class HandStream:
-    def __init__(self, host, port, reconnect_delay_s=0.5, connect=None, on_unsupported_hand=None):
+    def __init__(self, host, port, reconnect_delay_s=0.5, connect=None,
+                 on_unsupported_hand=None, on_stream_error=None):
         self.host = host
         self.port = port
         self._reconnect_delay_s = reconnect_delay_s
         self._connect = connect or self._default_connect
         self.on_unsupported_hand = on_unsupported_hand
+        self.on_stream_error = on_stream_error
 
         self._cond = threading.Condition()
         self._hands = {}
@@ -85,6 +88,8 @@ class HandStream:
                 self._read_loop(self._sock)
             except (OSError, EOFError):
                 pass
+            except (json.JSONDecodeError, struct.error, KeyError, ValueError) as exc:
+                self._report_error(f"undecodable frame, reconnecting: {exc!r}")
             finally:
                 self._close_socket()
                 self._drop_all()
@@ -92,6 +97,10 @@ class HandStream:
                 return
             self._stop.wait(delay)
             delay = min(delay * 2.0, _MAX_RECONNECT_DELAY_S)
+
+    def _report_error(self, message: str):
+        if self.on_stream_error is not None:
+            self.on_stream_error(message)
 
     def _close_socket(self):
         if self._sock is not None:

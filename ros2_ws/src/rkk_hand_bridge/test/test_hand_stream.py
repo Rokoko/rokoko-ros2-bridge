@@ -2,9 +2,12 @@ import io
 import json
 import struct
 import threading
+import time
 
 from rkk_hand_bridge import rgmp
 from rkk_hand_bridge.hand_stream import HandStream
+
+from test_bridge_node import FeedableSocket
 
 
 class FakeSocket:
@@ -190,3 +193,24 @@ def test_warns_once_for_a_hand_missing_the_openxr_group():
         assert stream.hands() == {}
     finally:
         stream.stop()
+
+
+def test_undecodable_payloads_are_reported_and_survived():
+    for payload in (b"{not json", b'{"device_id": 7, "device_type": "solved_hand"'):
+        reported = []
+        sock = FeedableSocket()
+        pending = [sock, FeedableSocket()]
+        stream = HandStream(
+            "h", 0, reconnect_delay_s=0.01,
+            connect=lambda: pending.pop(0) if pending else FeedableSocket(),
+            on_stream_error=reported.append,
+        )
+        stream.start()
+        try:
+            time.sleep(0.15)
+            sock.feed(_frame(rgmp.MSG_DEFINITION, payload))
+            time.sleep(0.4)
+            assert stream._thread.is_alive()
+            assert reported and "undecodable frame" in reported[0]
+        finally:
+            stream.stop()

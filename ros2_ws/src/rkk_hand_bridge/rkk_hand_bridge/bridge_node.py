@@ -133,6 +133,7 @@ class BridgeNode(Node):
             reconnect_delay_s=self.get_parameter("reconnect_delay_s").value,
         )
         self._stream.on_unsupported_hand = self._on_unsupported_hand
+        self._stream.on_stream_error = self._on_stream_error
         self._stream.start()
 
         self._diagnostics_timer = self.create_timer(
@@ -148,6 +149,9 @@ class BridgeNode(Node):
         self._stream.stop()
         self._watcher.join(timeout=5.0)
         super().destroy_node()
+
+    def _on_stream_error(self, message: str):
+        self.get_logger().warning(f"solver stream: {message}")
 
     def _on_unsupported_hand(self, device_id: int, reason: str):
         self._unsupported[device_id] = reason
