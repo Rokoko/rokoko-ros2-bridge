@@ -34,6 +34,7 @@ class HandStream:
         self._stop = threading.Event()
         self._thread = None
         self._sock = None
+        self._delivered = False
 
     def _default_connect(self):
         return socket.create_connection((self.host, self.port))
@@ -85,7 +86,6 @@ class HandStream:
             try:
                 self._sock = self._connect()
                 self._set_connected(True)
-                delay = self._reconnect_delay_s
                 self._read_loop(self._sock)
             except (OSError, EOFError):
                 pass
@@ -96,6 +96,9 @@ class HandStream:
                 self._drop_all()
             if self._stop.is_set():
                 return
+            if self._delivered:
+                delay = self._reconnect_delay_s
+                self._delivered = False
             self._stop.wait(delay)
             delay = min(delay * 2.0, max(_MAX_RECONNECT_DELAY_S, self._reconnect_delay_s))
 
@@ -114,6 +117,9 @@ class HandStream:
     def _read_loop(self, reader):
         while not self._stop.is_set():
             msg_prefix, payload = rgmp.read_frame(reader)
+            # A solver that accepts and immediately closes must still back
+            # off, so the delay resets on data rather than on connect.
+            self._delivered = True
             if msg_prefix == rgmp.MSG_DEFINITION:
                 self._on_definition(payload)
             elif msg_prefix == rgmp.MSG_DATA:

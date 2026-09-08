@@ -229,3 +229,30 @@ def test_a_long_reconnect_delay_never_shrinks():
     assert progression(0.5) == [0.5, 1.0, 2.0, 4.0]
     assert progression(30.0) == [30.0, 30.0, 30.0, 30.0]
     assert all(b >= a for a, b in zip(progression(30.0), progression(30.0)[1:]))
+
+
+class _InstantlyClosedSocket:
+    """Accepts, then closes without sending anything."""
+
+    def recv(self, n):
+        return b""
+
+    def close(self):
+        pass
+
+
+def test_a_connection_that_delivers_nothing_still_backs_off():
+    attempts = []
+
+    def connect():
+        attempts.append(time.monotonic())
+        return _InstantlyClosedSocket()
+
+    stream = HandStream("h", 0, reconnect_delay_s=0.05, connect=connect)
+    stream.start()
+    try:
+        time.sleep(1.0)
+    finally:
+        stream.stop()
+    # Without backing off this reconnects every 50ms, about 20 times.
+    assert 2 <= len(attempts) <= 8, len(attempts)
