@@ -12,6 +12,7 @@ setup(
         ("share/" + package_name + "/launch", ["launch/hand_bridge.launch.py"]),
     ],
     install_requires=["setuptools"],
+    extras_require={"test": ["pytest"]},
     zip_safe=True,
     maintainer="Rokoko",
     maintainer_email="anastasia.panaretou@rokoko.com",

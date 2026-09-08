@@ -13,6 +13,7 @@ setup(
         ("share/" + package_name + "/config", ["config/upstream.yaml"]),
     ],
     install_requires=["setuptools"],
+    extras_require={"test": ["pytest"]},
     zip_safe=True,
     maintainer="Rokoko",
     maintainer_email="anastasia.panaretou@rokoko.com",
