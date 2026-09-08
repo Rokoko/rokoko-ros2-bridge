@@ -33,6 +33,15 @@ _SENSOR_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.BEST_EFFORT,
     durability=QoSDurabilityPolicy.VOLATILE,
 )
+# RViz's MarkerArray display subscribes reliably, so markers cannot use
+# the best-effort profile above. depth=1 instead: a display wants the
+# newest hand, and queueing ten stale ones behind a busy renderer is what
+# makes it stutter.
+_MARKER_QOS = QoSProfile(
+    depth=1,
+    reliability=QoSReliabilityPolicy.RELIABLE,
+    durability=QoSDurabilityPolicy.VOLATILE,
+)
 
 
 def _hand_code(hand: str) -> int:
@@ -67,18 +76,19 @@ class BridgeNode(Node):
         self.declare_parameter("marker_lifetime_s", 0.5)
         self.declare_parameter("marker_joint_scale", 1.0)
         self.declare_parameter("marker_max_joint_radius_m", 0.010)
+        self.declare_parameter("marker_rate_hz", 30.0)
         self.declare_parameter("parent_frame_id", "")
         self.declare_parameter("calibrate_facing_rad", 0.0)
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)
         self._diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
-        # Default (reliable) QoS: RViz's MarkerArray display subscribes reliably.
-        self._markers_pub = self.create_publisher(MarkerArray, "~/hand/markers", 10)
+        self._markers_pub = self.create_publisher(MarkerArray, "~/hand/markers", _MARKER_QOS)
         self._calibrate_srv = self.create_service(Trigger, "~/calibrate", self._handle_calibrate)
         self._tf_broadcaster = TransformBroadcaster(self)
         self._warned_no_parent_frame = False
         self._warned_no_marker_frame = False
+        self._last_marker_ns = {}  # device_id -> when markers last went out
 
         self._published_description = set()
         self._known_hands = {}  # device_id -> hand string, kept across disconnects
@@ -128,6 +138,7 @@ class BridgeNode(Node):
                 self._published_description.discard(device_id)
                 self._stamp_sources.pop(device_id, None)
                 self._last_timestamp_us.pop(device_id, None)
+                self._last_marker_ns.pop(device_id, None)
                 if self.get_parameter("publish_markers").value:
                     hand = self._known_hands.get(device_id)
                     if hand is not None:
@@ -207,7 +218,25 @@ class BridgeNode(Node):
             transforms.append(t)
         self._tf_broadcaster.sendTransform(transforms)
 
+    def _due_for_markers(self, device_id: int) -> bool:
+        """Markers are for a human watching a screen, not for consumers of
+        the data, so they are throttled well below the solver's frame rate
+        - a hand at 83Hz is 27 markers per frame, which buries RViz and
+        shows up as flicker rather than as smoothness."""
+        rate_hz = self.get_parameter("marker_rate_hz").value
+        if rate_hz <= 0.0:
+            return True  # 0 disables throttling: one array per frame
+        now_ns = self.get_clock().now().nanoseconds
+        last_ns = self._last_marker_ns.get(device_id)
+        if last_ns is not None and now_ns - last_ns < 1e9 / rate_hz:
+            return False
+        self._last_marker_ns[device_id] = now_ns
+        return True
+
     def _publish_markers(self, definition, rebased, stamp: TimeMsg):
+        if not self._due_for_markers(definition.device_id):
+            return
+
         frame_id = self.get_parameter("parent_frame_id").value
         if not frame_id:
             if not self._warned_no_marker_frame:

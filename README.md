@@ -88,8 +88,8 @@ ros2 launch rkk_hand_bridge hand_bridge.launch.py
 Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `publish_markers` (default `false`), `marker_lifetime_s` (default
-`0.5`), `marker_joint_scale`, `marker_max_joint_radius_m`,
-`parent_frame_id` (required if `publish_tf` or `publish_markers`
+`0.5`), `marker_rate_hz` (default `30`), `marker_joint_scale`,
+`marker_max_joint_radius_m`, `parent_frame_id` (required if `publish_tf` or `publish_markers`
 is set), `stamp_source` (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
 takes `spawn_solver` (default `true`), `config`, `rviz` (default
 `false`) and `rviz_config` — see below.
@@ -209,8 +209,15 @@ the display's **Namespaces** list.
 
 Markers carry a `marker_lifetime_s` (default `0.5`) lifetime, so if the
 stream stops they fade out instead of leaving a frozen hand on screen; a
-hand that disconnects cleanly clears itself immediately. Raise it if you
-are running a very low frame rate and see flicker.
+hand that disconnects cleanly clears itself immediately.
+
+They are also throttled to `marker_rate_hz` (default `30`), well below
+the solver's frame rate. A hand is 27 markers per frame, so at the
+solver's 83Hz that is ~2250 markers/second — enough to bury RViz's
+renderer and show up as flicker rather than as smoothness. The throttle
+brings it to ~750/s. Markers are for a human watching a screen; the data
+topics (`hand/joints`, `/tf`) still run at the full frame rate and are
+unaffected. `marker_rate_hz:=0` disables the throttle.
 
 To see joint frames as well, tick the config's **Joint frames** (TF)
 display on — it is shipped disabled, with **Marker Scale** already

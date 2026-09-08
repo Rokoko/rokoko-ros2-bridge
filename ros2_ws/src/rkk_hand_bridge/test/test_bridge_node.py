@@ -443,3 +443,40 @@ def test_a_disconnecting_hand_clears_its_markers():
         recorder.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_markers_are_throttled_below_the_frame_rate():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("marker_rate_hz", value=30.0)],
+        )
+        # Two frames back to back arrive far faster than 1/30s apart, so
+        # only the first is due.
+        assert node._due_for_markers(7) is True
+        assert node._due_for_markers(7) is False
+        # a second hand is throttled independently
+        assert node._due_for_markers(8) is True
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_a_zero_marker_rate_publishes_every_frame():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("marker_rate_hz", value=0.0)],
+        )
+        assert all(node._due_for_markers(7) for _ in range(5))
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
