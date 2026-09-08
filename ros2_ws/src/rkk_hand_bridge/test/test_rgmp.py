@@ -136,3 +136,10 @@ def test_decode_data_reads_header_and_all_joints():
 
 def test_decode_disconnect_extracts_device_id():
     assert rgmp.decode_disconnect(struct.pack("<I", 42)).device_id == 42
+
+
+def test_a_group_that_states_its_id_is_believed_over_its_index():
+    group = _openxr_group()
+    group["group_id"] = 9
+    definition = rgmp.decode_definition(_definition(groups=[{"name": "x"}, group]))
+    assert definition.group_id == 9

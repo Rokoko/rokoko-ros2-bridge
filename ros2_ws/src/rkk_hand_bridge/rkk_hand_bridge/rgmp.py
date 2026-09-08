@@ -106,9 +106,10 @@ def describe_unsupported(payload: bytes) -> str | None:
 
 
 def _find_group(groups: list) -> tuple[int, dict | None]:
-    for group_id, group in enumerate(groups):
+    for index, group in enumerate(groups):
         if group.get("name") == GROUP_NAME:
-            return group_id, group
+            # The wire id is the array index unless the group states one.
+            return group.get("group_id", group.get("id", index)), group
     return -1, None
 
 
