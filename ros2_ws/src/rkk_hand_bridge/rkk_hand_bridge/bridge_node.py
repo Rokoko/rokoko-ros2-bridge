@@ -17,6 +17,7 @@ from std_srvs.srv import Trigger
 from tf2_ros import TransformBroadcaster
 from visualization_msgs.msg import MarkerArray
 
+from rkk_hand_bridge import constants
 from rkk_hand_bridge import frame_convert as fc
 from rkk_hand_bridge import rgmp
 from rkk_hand_bridge import hand_markers
@@ -81,20 +82,22 @@ class BridgeNode(Node):
     def __init__(self, stream: HandStream | None = None, **node_kwargs):
         super().__init__("rkk_hand_bridge", **node_kwargs)
 
-        self.declare_parameter("solver_host", "127.0.0.1")
-        self.declare_parameter("solver_port", 12277)
-        self.declare_parameter("reconnect_delay_s", 0.5)
-        self.declare_parameter("stamp_source", "auto")
-        self.declare_parameter("publish_tf", False)
-        self.declare_parameter("publish_markers", False)
-        self.declare_parameter("marker_lifetime_s", 0.5)
-        self.declare_parameter("marker_joint_scale", 1.0)
-        self.declare_parameter("marker_max_joint_radius_m", 0.010)
-        self.declare_parameter("marker_rate_hz", 30.0)
-        self.declare_parameter("marker_hand_spacing_m", 0.45)
-        self.declare_parameter("parent_frame_id", "")
-        self.declare_parameter("calibrate_facing_rad", 0.0)
-        self.declare_parameter("calibrate_max_disagreement_rad", math.radians(30.0))
+        self.declare_parameter("solver_host", constants.SOLVER_HOST)
+        self.declare_parameter("solver_port", constants.SOLVER_PORT)
+        self.declare_parameter("reconnect_delay_s", constants.RECONNECT_DELAY_S)
+        self.declare_parameter("stamp_source", constants.STAMP_SOURCE)
+        self.declare_parameter("publish_tf", constants.PUBLISH_TF)
+        self.declare_parameter("publish_markers", constants.PUBLISH_MARKERS)
+        self.declare_parameter("marker_lifetime_s", constants.MARKER_LIFETIME_S)
+        self.declare_parameter("marker_joint_scale", constants.MARKER_JOINT_SCALE)
+        self.declare_parameter("marker_max_joint_radius_m", constants.MARKER_MAX_JOINT_RADIUS_M)
+        self.declare_parameter("marker_rate_hz", constants.MARKER_RATE_HZ)
+        self.declare_parameter("marker_hand_spacing_m", constants.MARKER_HAND_SPACING_M)
+        self.declare_parameter("parent_frame_id", constants.PARENT_FRAME_ID)
+        self.declare_parameter("calibrate_facing_rad", constants.CALIBRATE_FACING_RAD)
+        self.declare_parameter(
+            "calibrate_max_disagreement_rad", constants.CALIBRATE_MAX_DISAGREEMENT_RAD
+        )
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)

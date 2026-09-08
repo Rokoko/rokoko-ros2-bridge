@@ -3,48 +3,40 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+from rkk_hand_bridge import constants
+
+PARAMETERS = {
+    "solver_host": constants.SOLVER_HOST,
+    "solver_port": constants.SOLVER_PORT,
+    "reconnect_delay_s": constants.RECONNECT_DELAY_S,
+    "stamp_source": constants.STAMP_SOURCE,
+    "parent_frame_id": constants.PARENT_FRAME_ID,
+    "publish_tf": constants.PUBLISH_TF,
+    "publish_markers": constants.PUBLISH_MARKERS,
+    "marker_rate_hz": constants.MARKER_RATE_HZ,
+    "marker_lifetime_s": constants.MARKER_LIFETIME_S,
+    "marker_joint_scale": constants.MARKER_JOINT_SCALE,
+    "marker_max_joint_radius_m": constants.MARKER_MAX_JOINT_RADIUS_M,
+    "marker_hand_spacing_m": constants.MARKER_HAND_SPACING_M,
+    "calibrate_facing_rad": constants.CALIBRATE_FACING_RAD,
+    "calibrate_max_disagreement_rad": constants.CALIBRATE_MAX_DISAGREEMENT_RAD,
+}
+
+
+def _as_launch_default(value) -> str:
+    return str(value).lower() if isinstance(value, bool) else str(value)
+
 
 def generate_launch_description():
     args = [
-        DeclareLaunchArgument("solver_host", default_value="127.0.0.1"),
-        DeclareLaunchArgument("solver_port", default_value="12277"),
-        DeclareLaunchArgument("stamp_source", default_value="auto"),
-        DeclareLaunchArgument("publish_tf", default_value="false"),
-        DeclareLaunchArgument("publish_markers", default_value="false"),
-        DeclareLaunchArgument("marker_lifetime_s", default_value="0.5"),
-        DeclareLaunchArgument("marker_joint_scale", default_value="1.0"),
-        DeclareLaunchArgument("marker_max_joint_radius_m", default_value="0.010"),
-        DeclareLaunchArgument("marker_rate_hz", default_value="30.0"),
-        DeclareLaunchArgument("marker_hand_spacing_m", default_value="0.45"),
-        DeclareLaunchArgument("parent_frame_id", default_value=""),
-        DeclareLaunchArgument("calibrate_facing_rad", default_value="0.0"),
-        DeclareLaunchArgument("calibrate_max_disagreement_rad", default_value="0.5236"),
-        DeclareLaunchArgument("reconnect_delay_s", default_value="0.5"),
+        DeclareLaunchArgument(name, default_value=_as_launch_default(value))
+        for name, value in PARAMETERS.items()
     ]
-
     node = Node(
         package="rkk_hand_bridge",
         executable="bridge_node",
         name="rkk_hand_bridge",
         output="screen",
-        parameters=[
-            {
-                "solver_host": LaunchConfiguration("solver_host"),
-                "solver_port": LaunchConfiguration("solver_port"),
-                "stamp_source": LaunchConfiguration("stamp_source"),
-                "publish_tf": LaunchConfiguration("publish_tf"),
-                "publish_markers": LaunchConfiguration("publish_markers"),
-                "marker_lifetime_s": LaunchConfiguration("marker_lifetime_s"),
-                "marker_joint_scale": LaunchConfiguration("marker_joint_scale"),
-                "marker_max_joint_radius_m": LaunchConfiguration("marker_max_joint_radius_m"),
-                "marker_rate_hz": LaunchConfiguration("marker_rate_hz"),
-                "marker_hand_spacing_m": LaunchConfiguration("marker_hand_spacing_m"),
-                "parent_frame_id": LaunchConfiguration("parent_frame_id"),
-                "calibrate_facing_rad": LaunchConfiguration("calibrate_facing_rad"),
-                "calibrate_max_disagreement_rad": LaunchConfiguration("calibrate_max_disagreement_rad"),
-                "reconnect_delay_s": LaunchConfiguration("reconnect_delay_s"),
-            }
-        ],
+        parameters=[{name: LaunchConfiguration(name) for name in PARAMETERS}],
     )
-
     return LaunchDescription(args + [node])
