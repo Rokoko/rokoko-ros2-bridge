@@ -6,7 +6,7 @@ import threading
 
 import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Point, Pose, Quaternion, TransformStamped
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -180,7 +180,12 @@ class BridgeNode(Node):
         receive_time_ns = self.get_clock().now().nanoseconds
         stamp_ns = stamp_source.compute(frame.timestamp_us, definition.timestamp_epoch, receive_time_ns)
         if stamp_ns is None:
-            return  # backwards jump - drop, don't publish a stale-looking stamp
+            self.get_logger().warning(
+                f"hand {frame.device_id}: dropped a frame stamped before the last "
+                f"published one ({stamp_source.dropped} so far)",
+                throttle_duration_sec=5.0,
+            )
+            return
 
         stamp = _stamp_from_ns(stamp_ns)
         converted = [converter.convert(j.position, j.orientation) for j in frame.joints]
@@ -277,6 +282,12 @@ class BridgeNode(Node):
             else:
                 status.level = DiagnosticStatus.OK
                 status.message = "connected"
+            source = self._stamp_sources.get(device_id)
+            if source is not None:
+                status.values = [
+                    KeyValue(key="dropped_frames", value=str(source.dropped)),
+                    KeyValue(key="clock_resets", value=str(source.clock_resets)),
+                ]
             array.status.append(status)
         self._diagnostics_pub.publish(array)
 

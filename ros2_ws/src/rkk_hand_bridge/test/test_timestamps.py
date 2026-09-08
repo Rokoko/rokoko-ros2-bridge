@@ -61,3 +61,29 @@ def test_monotonicity_guard_drops_a_backwards_frame():
 def test_invalid_mode_raises():
     with pytest.raises(ValueError):
         StampSource(mode="bogus")
+
+
+def test_a_clock_reset_restarts_instead_of_stalling():
+    source = StampSource(mode="epoch")
+    source.compute(10_000_000, None, receive_time_ns=0)  # 10s
+    restarted_us = 5_000  # device counter back near zero
+    assert source.compute(restarted_us, None, receive_time_ns=0) == restarted_us * 1000
+    assert source.clock_resets == 1
+    assert source.dropped == 0
+
+
+def test_small_backwards_steps_are_still_dropped():
+    source = StampSource(mode="epoch")
+    source.compute(2_000_000, None, receive_time_ns=0)
+    assert source.compute(1_999_000, None, receive_time_ns=0) is None
+    assert source.dropped == 1
+    assert source.clock_resets == 0
+
+
+def test_a_clock_reset_clears_the_offset_estimate():
+    source = StampSource(mode="offset")
+    source.compute(10_000_000, None, receive_time_ns=10_000_000_000)
+    source.compute(1_000, None, receive_time_ns=20_000_000_000)  # reset
+    stamp = source.compute(2_000, None, receive_time_ns=20_000_000_000)
+    assert stamp is not None
+    assert source.clock_resets == 1

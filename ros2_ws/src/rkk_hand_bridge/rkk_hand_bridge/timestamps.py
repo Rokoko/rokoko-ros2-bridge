@@ -12,6 +12,11 @@ MODES = ("auto", "epoch", "offset", "receive")
 
 OFFSET_WINDOW_NS = 30 * 1_000_000_000
 
+# Frames can arrive slightly out of order; a device clock that resets or
+# steps cannot. Above this, treat it as a new clock rather than dropping
+# every frame until the old one is caught up with.
+CLOCK_RESET_NS = 1_000_000_000
+
 
 class _WindowedMinimum:
     """Smallest value pushed within the last `window_ns`, in O(1) amortised."""
@@ -39,10 +44,14 @@ class StampSource:
         self._mode = mode
         self._offset = _WindowedMinimum(OFFSET_WINDOW_NS)
         self._last_stamp_ns = None
+        self.dropped = 0
+        self.clock_resets = 0
 
     def compute(self, timestamp_us: int, timestamp_epoch: str | None, receive_time_ns: int) -> int | None:
         """Returns the stamp to publish, or None if this frame should
-        be dropped for going backwards relative to the last one."""
+        be dropped for going backwards relative to the last one. A
+        backwards step past CLOCK_RESET_NS restarts from the new clock
+        instead."""
         mode = self._mode if self._mode != "auto" else self._auto_mode(timestamp_epoch)
         if mode == "epoch":
             stamp_ns = timestamp_us * 1000
@@ -51,10 +60,20 @@ class StampSource:
         else:
             stamp_ns = receive_time_ns
 
-        if self._last_stamp_ns is not None and stamp_ns < self._last_stamp_ns:
+        if self._went_backwards(stamp_ns):
+            self.dropped += 1
             return None
         self._last_stamp_ns = stamp_ns
         return stamp_ns
+
+    def _went_backwards(self, stamp_ns: int) -> bool:
+        if self._last_stamp_ns is None or stamp_ns >= self._last_stamp_ns:
+            return False
+        if self._last_stamp_ns - stamp_ns < CLOCK_RESET_NS:
+            return True
+        self.clock_resets += 1
+        self._offset = _WindowedMinimum(OFFSET_WINDOW_NS)
+        return False
 
     def _auto_mode(self, timestamp_epoch: str | None) -> str:
         return "epoch" if timestamp_epoch == UNIX_EPOCH else "offset"
