@@ -17,6 +17,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 
 from rkk_hand_bridge import frame_convert as fc
 from rkk_hand_bridge import rgmp
+from rkk_hand_bridge.rgmp import decode_definition as _raw_decode
 from rkk_hand_bridge.bridge_node import _LATCHED_QOS, _SENSOR_QOS, BridgeNode
 from rkk_hand_bridge.hand_stream import HandStream
 from rkk_hand_msgs.msg import HandDescription, HandJoints
@@ -55,6 +56,10 @@ class FeedableSocket:
 
     def close(self):
         self._chunks.put(None)
+
+
+def _decode_definition(frame_bytes):
+    return _raw_decode(frame_bytes[8:])
 
 
 def _frame(msg_prefix, payload):
@@ -611,10 +616,11 @@ def test_a_hand_that_becomes_supported_clears_its_error():
 
 
 class _OneUpdateStream:
-    """Wakes _watch exactly once, then blocks like an idle stream."""
+    """Wakes _watch exactly once with a hand to publish, then goes idle."""
 
-    def __init__(self):
+    def __init__(self, definition=None):
         self.woken = False
+        self._definition = definition
 
     def wait(self, seen, timeout=None):
         if self.woken:
@@ -623,7 +629,7 @@ class _OneUpdateStream:
         return seen + 1
 
     def hands(self):
-        return {}
+        return {7: self._definition} if self._definition else {}
 
     def latest(self):
         return {}
@@ -638,12 +644,13 @@ def test_watch_exits_quietly_when_the_context_dies_mid_publish():
     node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
     # rclpy.shutdown() tears the context down and destroys the publishers;
     # SIGINT does the same underneath a watch thread already in flight.
+    definition = _decode_definition(_definition_bytes())
     rclpy.shutdown()
     assert not node.context.ok()
     with pytest.raises(Exception):
-        node._publish_new_state()
+        node._publish_description(definition)
 
-    node._stream = _OneUpdateStream()
+    node._stream = _OneUpdateStream(definition)
     node._stopping.clear()
     node._watch()  # must return rather than raise out of the thread
 
@@ -653,7 +660,7 @@ def test_watch_still_raises_when_the_context_is_healthy():
     try:
         sock = FeedableSocket()
         node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
-        node._stream = _OneUpdateStream()
+        node._stream = _OneUpdateStream(_decode_definition(_definition_bytes()))
 
         def boom():
             raise ValueError("a real failure, not a shutdown")

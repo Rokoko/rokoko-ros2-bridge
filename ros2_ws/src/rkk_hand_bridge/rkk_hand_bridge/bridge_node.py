@@ -214,8 +214,6 @@ class BridgeNode(Node):
             self._last_timestamp_us[device_id] = frame.timestamp_us
             self._publish_joints(definition, frame, sorted(hands))
 
-        self._publish_diagnostics(hands)
-
     def _publish_description(self, definition):
         msg = HandDescription()
         msg.header.stamp = self.get_clock().now().to_msg()
