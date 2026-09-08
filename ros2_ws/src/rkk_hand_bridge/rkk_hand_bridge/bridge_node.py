@@ -119,6 +119,9 @@ class BridgeNode(Node):
         self._warned_no_marker_frame = False
         self._last_marker_ns = {}  # device_id -> when markers last went out
 
+        # Written by the watch thread and the stream's reader thread, read
+        # by the executor's timer and service callbacks.
+        self._state_lock = threading.Lock()
         self._published_description = set()
         self._known_hands = {}  # device_id -> hand string, kept across disconnects
         self._unsupported = {}  # device_id -> reason, for hands we cannot read
@@ -154,7 +157,8 @@ class BridgeNode(Node):
         self.get_logger().warning(f"solver stream: {message}")
 
     def _on_unsupported_hand(self, device_id: int, reason: str):
-        self._unsupported[device_id] = reason
+        with self._state_lock:
+            self._unsupported[device_id] = reason
         self.get_logger().warning(f"solved hand {device_id}: {_unsupported_help(reason)}")
 
     def _watch(self):
@@ -179,23 +183,27 @@ class BridgeNode(Node):
         hands = self._stream.hands()
         frames = self._stream.latest()
 
-        for device_id in list(self._published_description):
-            if device_id not in hands:
+        with self._state_lock:
+            gone = [d for d in self._published_description if d not in hands]
+            for device_id in gone:
                 self._published_description.discard(device_id)
                 self._stamp_sources.pop(device_id, None)
                 self._last_timestamp_us.pop(device_id, None)
                 self._last_marker_ns.pop(device_id, None)
-                if self.get_parameter("publish_markers").value:
-                    hand = self._known_hands.get(device_id)
-                    if hand is not None:
-                        self._markers_pub.publish(hand_markers.deletion(hand))
+            new = [d for d, _ in hands.items() if d not in self._published_description]
+            for device_id, definition in hands.items():
+                self._known_hands[device_id] = definition.hand
+                self._unsupported.pop(device_id, None)
+            self._published_description.update(new)
+            dropped_hands = [self._known_hands.get(d) for d in gone]
 
-        for device_id, definition in hands.items():
-            self._known_hands[device_id] = definition.hand
-            self._unsupported.pop(device_id, None)
-            if device_id not in self._published_description:
-                self._publish_description(definition)
-                self._published_description.add(device_id)
+        if self.get_parameter("publish_markers").value:
+            for hand in dropped_hands:
+                if hand is not None:
+                    self._markers_pub.publish(hand_markers.deletion(hand))
+
+        for device_id in new:
+            self._publish_description(hands[device_id])
 
         for device_id, frame in frames.items():
             definition = hands.get(device_id)
@@ -251,11 +259,12 @@ class BridgeNode(Node):
 
     def _stamp_source_for(self, device_id: int) -> StampSource:
         mode = self.get_parameter("stamp_source").value
-        source = self._stamp_sources.get(device_id)
-        if source is None or source.mode != mode:
-            source = StampSource(mode)
-            self._stamp_sources[device_id] = source
-        return source
+        with self._state_lock:
+            source = self._stamp_sources.get(device_id)
+            if source is None or source.mode != mode:
+                source = StampSource(mode)
+                self._stamp_sources[device_id] = source
+            return source
 
     def _broadcast_tf(self, definition, converted, stamp: TimeMsg):
         parent_frame_id = self.get_parameter("parent_frame_id").value
@@ -324,9 +333,14 @@ class BridgeNode(Node):
         )
 
     def _publish_diagnostics(self, hands):
+        with self._state_lock:
+            known = list(self._known_hands.items())
+            unsupported = list(self._unsupported.items())
+            sources = dict(self._stamp_sources)
+
         array = DiagnosticArray()
         array.header.stamp = self.get_clock().now().to_msg()
-        for device_id, hand in self._known_hands.items():
+        for device_id, hand in known:
             status = DiagnosticStatus()
             status.hardware_id = str(device_id)
             status.name = f"rkk_hand_bridge: {hand} hand"
@@ -339,7 +353,7 @@ class BridgeNode(Node):
             else:
                 status.level = DiagnosticStatus.OK
                 status.message = "connected"
-            source = self._stamp_sources.get(device_id)
+            source = sources.get(device_id)
             if source is not None:
                 status.values = [
                     KeyValue(key="dropped_frames", value=str(source.dropped)),
@@ -347,7 +361,7 @@ class BridgeNode(Node):
                 ]
             array.status.append(status)
 
-        for device_id, reason in self._unsupported.items():
+        for device_id, reason in unsupported:
             status = DiagnosticStatus()
             status.hardware_id = str(device_id)
             status.name = f"rkk_hand_bridge: unsupported hand {device_id}"
@@ -382,7 +396,8 @@ class BridgeNode(Node):
         self._ever_calibrated = True
         self._publish_diagnostics(self._stream.hands())
 
-        hand = self._known_hands.get(device_id, "unknown")
+        with self._state_lock:
+            hand = self._known_hands.get(device_id, "unknown")
         response.success = True
         response.message = (
             f"calibrated yaw offset to {self._yaw_offset:.3f} rad "
