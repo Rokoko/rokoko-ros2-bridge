@@ -179,7 +179,7 @@ the same rebased poses it publishes, and both needing a non-empty
 
 `rviz:=true` opens RViz with a packaged config
 (`rkk_hand_bringup/rviz/smartglove_hands.rviz`) that already has the
-markers display, a 10cm grid and a hand-scale camera set up, so there is
+markers display, a 1m grid and a hand-scale camera set up, so there is
 nothing to add by hand:
 
 ```sh
@@ -198,9 +198,14 @@ The config's **Fixed Frame** is `world`; if you use a different
 `parent_frame_id`, change it to match (Global Options, top-left). RViz
 needs that frame to exist in TF before it will draw anything positioned
 in it, which is why the command above also passes `publish_tf:=true` —
-the config's TF display is off, so this costs you no clutter, it just
-gives the frame something to exist in. If you already publish `world`
-from elsewhere, markers alone are enough.
+it costs you no clutter, it just gives the frame something to exist in.
+That does tie the frame's existence to the data stream, so if the gloves
+drop out the frame goes with them; anchoring it independently avoids
+that:
+
+```sh
+ros2 run tf2_ros static_transform_publisher --frame-id world --child-frame-id rkk_hand_anchor
+```
 
 Every connected hand appears automatically, left and right in different
 colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
@@ -213,16 +218,24 @@ hand that disconnects cleanly clears itself immediately.
 
 They are also throttled to `marker_rate_hz` (default `30`), well below
 the solver's frame rate. A hand is 27 markers per frame, so at the
-solver's 83Hz that is ~2250 markers/second — enough to bury RViz's
-renderer and show up as flicker rather than as smoothness. The throttle
-brings it to ~750/s. Markers are for a human watching a screen; the data
-topics (`hand/joints`, `/tf`) still run at the full frame rate and are
-unaffected. `marker_rate_hz:=0` disables the throttle.
+solver's 83Hz that is ~2250 markers/second, and markers are for a human
+watching a screen rather than for consumers of the data. The throttle
+brings it to ~750/s; the data topics (`hand/joints`, `/tf`) still run at
+the full frame rate and are unaffected. `marker_rate_hz:=0.0` publishes
+one array per frame. Note it is a double, so `0.0` — a bare `0` is
+rejected as the wrong parameter type.
 
-To see joint frames as well, tick the config's **Joint frames** (TF)
-display on — it is shipped disabled, with **Marker Scale** already
-lowered to `0.03` and **Show Names** on, since TF's default scale is
-meant for room-scale robots and a hand's joints are centimeters apart.
+To see joint frames as well, add a **TF** display yourself (**Add** →
+**By display type** → **TF**) and turn its **Marker Scale** down to
+`0.02`–`0.05` — TF's default is meant for room-scale robots and a hand's
+joints are centimeters apart. **Show Names** labels them
+`rkk_<hand>_hand_xr_<joint_name>`.
+
+Keep any grid you add coarse relative to the hand. A fine grid (say 10cm
+cells) puts semi-transparent lines straight through the markers at z=0,
+and transparent geometry intersecting the spheres makes the renderer's
+depth sorting unstable — which looks like the whole hand flickering. The
+packaged config's 1m cells keep the grid clear of the hand entirely.
 
 ### Sizing the joint spheres
 
