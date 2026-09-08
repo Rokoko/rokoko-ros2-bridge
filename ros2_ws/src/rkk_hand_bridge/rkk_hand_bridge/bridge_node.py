@@ -40,6 +40,12 @@ _UNSUPPORTED_HELP = {
 
 
 def _unsupported_help(reason: str) -> str:
+    if reason.startswith(rgmp.WRONG_JOINT_COUNT):
+        _, _, count = reason.partition(":")
+        return (
+            f"joints_openxr carries {count} joints, not {rgmp.JOINT_COUNT}; "
+            "this bridge's messages are fixed at that size"
+        )
     return _UNSUPPORTED_HELP.get(reason, reason)
 
 _LATCHED_QOS = QoSProfile(

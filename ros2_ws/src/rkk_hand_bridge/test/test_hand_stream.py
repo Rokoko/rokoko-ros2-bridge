@@ -28,12 +28,43 @@ class FakeSocket:
         self._closed.set()
 
 
+JOINT_NAMES = (
+    "palm",
+    "wrist",
+    "thumb_metacarpal",
+    "thumb_proximal",
+    "thumb_distal",
+    "thumb_tip",
+    "index_metacarpal",
+    "index_proximal",
+    "index_intermediate",
+    "index_distal",
+    "index_tip",
+    "middle_metacarpal",
+    "middle_proximal",
+    "middle_intermediate",
+    "middle_distal",
+    "middle_tip",
+    "ring_metacarpal",
+    "ring_proximal",
+    "ring_intermediate",
+    "ring_distal",
+    "ring_tip",
+    "little_metacarpal",
+    "little_proximal",
+    "little_intermediate",
+    "little_distal",
+    "little_tip",
+)
+
+
 def _frame(msg_prefix: int, payload: bytes) -> bytes:
     return struct.pack("<II", msg_prefix, len(payload)) + payload
 
 
 def _definition_bytes(device_id=7, hand="right", group_id_padding=0) -> bytes:
-    groups = [{"name": "joints_openxr", "streams": [{"target_frame": "xr_wrist"}]}]
+    streams = [{"target_frame": f"xr_{name}"} for name in JOINT_NAMES]
+    groups = [{"name": "joints_openxr", "streams": streams}]
     if group_id_padding:
         groups = [{"name": "joints_local", "streams": []}] * group_id_padding + groups
     payload = json.dumps(

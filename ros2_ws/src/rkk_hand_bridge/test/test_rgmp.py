@@ -53,17 +53,43 @@ def test_decode_definition_ignores_missing_openxr_group():
     assert rgmp.decode_definition(_definition(groups=groups)) is None
 
 
+JOINT_NAMES = (
+    "palm",
+    "wrist",
+    "thumb_metacarpal",
+    "thumb_proximal",
+    "thumb_distal",
+    "thumb_tip",
+    "index_metacarpal",
+    "index_proximal",
+    "index_intermediate",
+    "index_distal",
+    "index_tip",
+    "middle_metacarpal",
+    "middle_proximal",
+    "middle_intermediate",
+    "middle_distal",
+    "middle_tip",
+    "ring_metacarpal",
+    "ring_proximal",
+    "ring_intermediate",
+    "ring_distal",
+    "ring_tip",
+    "little_metacarpal",
+    "little_proximal",
+    "little_intermediate",
+    "little_distal",
+    "little_tip",
+)
+
+
+def _openxr_group(names=JOINT_NAMES):
+    return {"name": "joints_openxr",
+            "streams": [{"target_frame": f"xr_{name}"} for name in names]}
+
+
 def test_decode_definition_extracts_joints_and_radii():
-    groups = [
-        {"name": "joints_local", "streams": []},
-        {
-            "name": "joints_openxr",
-            "streams": [
-                {"target_frame": "xr_palm"},
-                {"target_frame": "xr_wrist"},
-            ],
-        },
-    ]
+    groups = [{"name": "joints_local", "streams": []}, _openxr_group()]
     static_data = [
         {"custom_label": "joint_radius", "target_frame": "xr_palm", "value": 0.025},
     ]
@@ -73,8 +99,18 @@ def test_decode_definition_extracts_joints_and_radii():
     assert definition.hand == "right"
     assert definition.timestamp_epoch == "unix_epoch"
     assert definition.group_id == 1
-    assert definition.joint_names == ("palm", "wrist")
-    assert definition.joint_radii == (0.025, 0.0)
+    assert definition.joint_names == JOINT_NAMES
+    assert definition.joint_radii[0] == 0.025
+    assert definition.joint_radii[1] == 0.0
+
+
+def test_a_group_with_the_wrong_joint_count_is_rejected():
+    # The published messages are fixed-size arrays; a short one would be
+    # accepted here and then crash the publisher.
+    groups = [_openxr_group(JOINT_NAMES[:20])]
+    payload = _definition(groups=groups)
+    assert rgmp.decode_definition(payload) is None
+    assert rgmp.describe_unsupported(payload).startswith(rgmp.WRONG_JOINT_COUNT)
 
 
 def _pose_bytes(position, orientation):
