@@ -1,7 +1,15 @@
 # Upstream chain configuration for smartglove_hands.launch.py.
-# Arguments to start the rkk-hand-solver
+# Arguments to start the rkk-hand-solver and the rokoko-sdk driver.
+#
+# The solver always adds its own `-vv --auto-stream-usb` when it spawns
+# the driver, and --driver-arg can only append after those. So the driver
+# is started here instead, with --no-driver telling the solver to attach
+# to it. Every argument below then appears exactly once, as written.
 
 solver:
   executable: rkk-hand-solver
-  args: ["--emit-openxr"]
-  driver_args: ["--auto-stream-usb", "-ef", "1024"]
+  args: ["--emit-openxr", "--no-driver"]
+
+driver:
+  executable: rokoko-sdk
+  args: ["-vv", "--auto-stream-usb", "-ef", "1024"]
