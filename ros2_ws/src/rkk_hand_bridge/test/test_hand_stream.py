@@ -146,7 +146,7 @@ def test_warns_once_for_a_hand_missing_the_openxr_group():
         "h",
         0,
         connect=lambda: FakeSocket(data),
-        on_unusable_hand=lambda device_id, reason: warnings.append((device_id, reason)),
+        on_unsupported_hand=lambda device_id, reason: warnings.append((device_id, reason)),
     )
     stream.start()
     try:

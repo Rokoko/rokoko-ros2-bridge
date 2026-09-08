@@ -13,12 +13,12 @@ _MAX_RECONNECT_DELAY_S = 10.0
 
 
 class HandStream:
-    def __init__(self, host, port, reconnect_delay_s=0.5, connect=None, on_unusable_hand=None):
+    def __init__(self, host, port, reconnect_delay_s=0.5, connect=None, on_unsupported_hand=None):
         self.host = host
         self.port = port
         self._reconnect_delay_s = reconnect_delay_s
         self._connect = connect or self._default_connect
-        self._on_unusable_hand = on_unusable_hand
+        self.on_unsupported_hand = on_unsupported_hand
 
         self._cond = threading.Condition()
         self._hands = {}
@@ -135,15 +135,15 @@ class HandStream:
             self._cond.notify_all()
 
     def _warn_once(self, payload: bytes):
-        reason = rgmp.describe_unusable(payload)
-        if reason is None or self._on_unusable_hand is None:
+        reason = rgmp.describe_unsupported(payload)
+        if reason is None or self.on_unsupported_hand is None:
             return
         device_id = json.loads(payload).get("device_id")
         with self._cond:
             if device_id in self._warned:
                 return
             self._warned.add(device_id)
-        self._on_unusable_hand(device_id, reason)
+        self.on_unsupported_hand(device_id, reason)
 
     def _on_disconnect(self, payload: bytes):
         device_id = rgmp.decode_disconnect(payload).device_id

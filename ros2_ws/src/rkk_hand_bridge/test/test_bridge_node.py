@@ -505,3 +505,74 @@ def test_changing_stamp_source_takes_effect_on_a_connected_hand():
         node.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def _definition_without_openxr(device_id=7):
+    payload = json.dumps(
+        {
+            "device_id": device_id,
+            "device_type": "solved_hand",
+            "timestamp_epoch": "unix_epoch",
+            "device_info": {"hand": "right"},
+            "static_data": [],
+            "groups": [{"name": "joints_local", "streams": []}],
+        }
+    ).encode()
+    return _frame(rgmp.MSG_DEFINITION, payload)
+
+
+def test_an_unsupported_hand_is_reported_on_diagnostics():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(stream=stream)
+        recorder = rclpy.create_node("diag_recorder")
+        received = []
+        recorder.create_subscription(DiagnosticArray, "/diagnostics", received.append, 10)
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_without_openxr())
+        assert _spin_until(
+            executor,
+            lambda: any(
+                s.level == DiagnosticStatus.ERROR and "unsupported" in s.name
+                for a in received
+                for s in a.status
+            ),
+            5.0,
+        )
+        status = next(
+            s for a in received for s in a.status if "unsupported" in s.name
+        )
+        assert status.hardware_id == "7"
+        assert "--emit-openxr" in status.message
+        assert status.values[0].value == rgmp.MISSING_OPENXR_GROUP
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_a_hand_that_becomes_supported_clears_its_error():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(stream=stream)
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+
+        sock.feed(_definition_without_openxr())
+        assert _spin_until(executor, lambda: 7 in node._unsupported, 5.0)
+
+        sock.feed(_definition_bytes())
+        assert _spin_until(executor, lambda: 7 not in node._unsupported, 5.0)
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()

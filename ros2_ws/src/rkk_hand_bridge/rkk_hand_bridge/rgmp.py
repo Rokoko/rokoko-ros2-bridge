@@ -14,6 +14,8 @@ JOINT_COUNT = 26
 RADIUS_LABEL = "joint_radius"
 XR_PREFIX = "xr_"
 
+MISSING_OPENXR_GROUP = "missing_joints_openxr"
+
 _POSE_SIZE = 28  # FLOAT[7]: position + quaternion, 4 bytes each
 _DATA_HEADER_SIZE = 16  # device_id, group_id, timestamp_us
 
@@ -87,14 +89,14 @@ def decode_definition(payload: bytes) -> Definition | None:
     )
 
 
-def describe_unusable(payload: bytes) -> str | None:
+def describe_unsupported(payload: bytes) -> str | None:
     """Why decode_definition returned None for this payload, or None if
     it's not worth a warning (e.g. not a solved-hand device at all)."""
     definition = json.loads(payload)
     if definition.get("device_type") != DEVICE_TYPE:
         return None
     _, group = _find_group(definition.get("groups") or [])
-    return None if group is not None else "missing_joints_openxr"
+    return None if group is not None else MISSING_OPENXR_GROUP
 
 
 def _find_group(groups: list) -> tuple[int, dict | None]:

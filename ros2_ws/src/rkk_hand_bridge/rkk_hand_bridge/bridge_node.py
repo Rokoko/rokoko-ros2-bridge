@@ -17,11 +17,24 @@ from tf2_ros import TransformBroadcaster
 from visualization_msgs.msg import MarkerArray
 
 from rkk_hand_bridge import frame_convert as fc
+from rkk_hand_bridge import rgmp
 from rkk_hand_bridge import hand_markers
 from rkk_hand_bridge.hand_stream import HandStream
 from rkk_hand_bridge.timestamps import StampSource
 
 _HAND_CODE = {"left": HandDescription.HAND_LEFT, "right": HandDescription.HAND_RIGHT}
+
+# Data-driven publishing alone would go quiet exactly when something is
+# wrong, and a late subscriber would never learn why.
+_DIAGNOSTICS_PERIOD_S = 1.0
+
+# The solver emits joints_local unless asked for the OpenXR group, and
+# that is nearly always why a hand arrives without it.
+_UNSUPPORTED_HELP = {
+    rgmp.MISSING_OPENXR_GROUP: (
+        "no joints_openxr group; start the solver with --emit-openxr"
+    ),
+}
 
 _LATCHED_QOS = QoSProfile(
     depth=1,
@@ -92,6 +105,7 @@ class BridgeNode(Node):
 
         self._published_description = set()
         self._known_hands = {}  # device_id -> hand string, kept across disconnects
+        self._unsupported = {}  # device_id -> reason, for hands we cannot read
         self._stamp_sources = {}
         self._last_timestamp_us = {}
         self._yaw_offset = 0.0  # shared across hands; a room-level correction, not per-hand
@@ -101,9 +115,13 @@ class BridgeNode(Node):
             self.get_parameter("solver_host").value,
             self.get_parameter("solver_port").value,
             reconnect_delay_s=self.get_parameter("reconnect_delay_s").value,
-            on_unusable_hand=self._on_unusable_hand,
         )
+        self._stream.on_unsupported_hand = self._on_unsupported_hand
         self._stream.start()
+
+        self._diagnostics_timer = self.create_timer(
+            _DIAGNOSTICS_PERIOD_S, lambda: self._publish_diagnostics(self._stream.hands())
+        )
 
         self._stopping = threading.Event()
         self._watcher = threading.Thread(target=self._watch, daemon=True)
@@ -115,8 +133,9 @@ class BridgeNode(Node):
         self._watcher.join(timeout=5.0)
         super().destroy_node()
 
-    def _on_unusable_hand(self, device_id: int, reason: str):
-        self.get_logger().warning(f"solved hand {device_id}: {reason}")
+    def _on_unsupported_hand(self, device_id: int, reason: str):
+        self._unsupported[device_id] = reason
+        self.get_logger().warning(f"solved hand {device_id}: {_UNSUPPORTED_HELP[reason]}")
 
     def _watch(self):
         seen = 0
@@ -146,6 +165,7 @@ class BridgeNode(Node):
 
         for device_id, definition in hands.items():
             self._known_hands[device_id] = definition.hand
+            self._unsupported.pop(device_id, None)
             if device_id not in self._published_description:
                 self._publish_description(definition)
                 self._published_description.add(device_id)
@@ -295,6 +315,16 @@ class BridgeNode(Node):
                     KeyValue(key="clock_resets", value=str(source.clock_resets)),
                 ]
             array.status.append(status)
+
+        for device_id, reason in self._unsupported.items():
+            status = DiagnosticStatus()
+            status.hardware_id = str(device_id)
+            status.name = f"rkk_hand_bridge: unsupported hand {device_id}"
+            status.level = DiagnosticStatus.ERROR
+            status.message = _UNSUPPORTED_HELP[reason]
+            status.values = [KeyValue(key="reason", value=reason)]
+            array.status.append(status)
+
         self._diagnostics_pub.publish(array)
 
     def _handle_calibrate(self, request, response):
