@@ -101,6 +101,10 @@ def yaw_offset_for_heading(heading_rad: float, facing_rad: float = 0.0) -> float
 
 
 def heading_spread(headings: list[float]) -> float:
-    """Widest angle between any two headings, wrapping correctly."""
-    offsets = [normalize_angle(heading - headings[0]) for heading in headings]
-    return max(offsets) - min(offsets)
+    """Widest angle between any two headings, wrapping correctly. Never
+    exceeds pi, since beyond that they are closer the other way round."""
+    widest = 0.0
+    for i, first in enumerate(headings):
+        for second in headings[i + 1:]:
+            widest = max(widest, abs(normalize_angle(second - first)))
+    return widest

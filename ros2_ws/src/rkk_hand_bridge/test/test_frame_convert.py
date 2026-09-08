@@ -62,3 +62,14 @@ def test_heading_spread_wraps_across_pi():
     # 175 degrees and -175 degrees are 10 degrees apart, not 350.
     spread = fc.heading_spread([math.radians(175), math.radians(-175)])
     assert math.isclose(spread, math.radians(10), abs_tol=1e-9)
+
+
+def test_heading_spread_never_exceeds_pi():
+    headings = [0.0, math.radians(170), math.radians(-170)]
+    assert fc.heading_spread(headings) <= math.pi + 1e-9
+
+
+def test_heading_spread_is_independent_of_ordering():
+    headings = [math.radians(10), math.radians(-25), math.radians(40)]
+    assert math.isclose(fc.heading_spread(headings),
+                        fc.heading_spread(list(reversed(headings))))
