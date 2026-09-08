@@ -12,8 +12,6 @@ _THUMB_PHALANGES = ("metacarpal", "proximal", "distal", "tip")
 
 _HAND_COLORS = {"left": (0.35, 0.62, 0.95), "right": (0.96, 0.60, 0.26)}
 _FALLBACK_COLOR = (0.7, 0.7, 0.7)
-_SPHERE_ALPHA = 0.95
-_BONE_ALPHA = 0.85
 
 _MIN_RADIUS_M = 0.002  # RViz drops a zero-scaled marker
 _BONE_WIDTH_M = 0.004
@@ -41,9 +39,11 @@ def _identity_pose() -> Pose:
     return Pose(orientation=Quaternion(x=0.0, y=0.0, z=0.0, w=1.0))
 
 
-def _color(hand: str, alpha: float) -> ColorRGBA:
+def _color(hand: str) -> ColorRGBA:
+    # Opaque: anything less puts 26 overlapping spheres in the renderer's
+    # transparent queue, whose cost scales with the window's pixels.
     r, g, b = _HAND_COLORS.get(hand, _FALLBACK_COLOR)
-    return ColorRGBA(r=r, g=g, b=b, a=alpha)
+    return ColorRGBA(r=r, g=g, b=b, a=1.0)
 
 
 def _namespace(hand: str, kind: str) -> str:
@@ -118,7 +118,7 @@ def _joint_spheres(hand, joint_names, joint_radii, converted, frame_id, stamp,
         marker.scale.x = marker.scale.y = marker.scale.z = _drawn_diameter(
             radius, scale, max_radius_m
         )
-        marker.color = _color(hand, _SPHERE_ALPHA)
+        marker.color = _color(hand)
         marker.text = name
         spheres.append(marker)
     return spheres
@@ -130,7 +130,7 @@ def _bone_skeleton(hand, joint_names, converted, frame_id, stamp, lifetime) -> M
     bones.id = 0
     bones.type = Marker.LINE_LIST
     bones.scale.x = _BONE_WIDTH_M
-    bones.color = _color(hand, _BONE_ALPHA)
+    bones.color = _color(hand)
     for parent, child in BONES:
         if parent in index_of and child in index_of:
             bones.points.append(_point(converted[index_of[parent]][0]))

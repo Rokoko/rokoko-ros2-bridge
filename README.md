@@ -245,6 +245,13 @@ colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
 namespace each — so you can toggle spheres and skeleton independently in
 the display's **Namespaces** list.
 
+Markers are drawn fully opaque. Anything translucent lands in the
+renderer's transparent queue, where 26 overlapping spheres cost fill rate
+proportional to the window's pixel count — which showed up as the hand
+flickering once the RViz window was maximised, and did not improve with a
+lower `marker_rate_hz`, since the cost is per drawn frame rather than per
+message.
+
 Connected hands are drawn side by side rather than on top of each other:
 both gloves report wrist-relative poses, so at true scale they sit in the
 same place and overlap into one tangle. `marker_hand_spacing_m` (default

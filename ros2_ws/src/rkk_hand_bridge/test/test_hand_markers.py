@@ -171,3 +171,8 @@ def test_the_offset_moves_spheres_and_bones_together():
         assert after.pose.position.x == before.pose.position.x
     for before, after in zip(_bones(plain).points, _bones(moved).points):
         assert after.y == before.y + 0.25
+
+
+def test_every_marker_is_opaque():
+    for marker in _build().markers:
+        assert marker.color.a == 1.0
