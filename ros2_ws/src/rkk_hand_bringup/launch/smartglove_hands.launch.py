@@ -14,6 +14,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 MODES = ("external", "solver", "launch")
+MODES_BY_SECTION = ("driver", "solver")
 
 
 def _shipped_config():
@@ -34,9 +35,9 @@ def _load(path):
     config = _read(_shipped_config())
     if path and os.path.abspath(path) != os.path.abspath(_shipped_config()):
         for section, values in _read(path).items():
-            if section not in config:
+            if section not in MODES_BY_SECTION:
                 raise RuntimeError(f"unknown section in {path}: {section}")
-            config[section].update(values or {})
+            config.setdefault(section, {}).update(values or {})
     return config
 
 
@@ -45,10 +46,12 @@ def _setup(context, *_args, **_kwargs):
         return LaunchConfiguration(name).perform(context)
 
     config = _load(arg("config"))
-    driver, solver = config["driver"], config["solver"]
+    solver = config["solver"]
+    # No `driver` section means nobody here starts one — that is the user's job.
+    driver = config.get("driver") or {}
 
     # Explicit launch argument wins over the config file.
-    mode = arg("driver_mode") or driver["mode"]
+    mode = arg("driver_mode") or driver.get("mode", "external")
     if mode not in MODES:
         raise RuntimeError(f"driver.mode must be one of {', '.join(MODES)}, got: {mode}")
 
@@ -58,8 +61,12 @@ def _setup(context, *_args, **_kwargs):
     driver_args = list(solver.get("driver_args") or []) if mode == "solver" else []
 
     if mode == "launch":
+        if "executable" not in driver:
+            raise RuntimeError("driver.mode is 'launch' but driver.executable is not set")
         actions.append(
-            ExecuteProcess(cmd=[driver["executable"], *driver["args"]], output="screen")
+            ExecuteProcess(
+                cmd=[driver["executable"], *(driver.get("args") or [])], output="screen"
+            )
         )
 
     if arg("spawn_solver").strip().lower() in ("1", "true", "yes"):
