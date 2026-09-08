@@ -1,9 +1,4 @@
-"""Fixed xr_base -> ROS rebase, plus yaw calibration.
-
-xr_base (the solved hand's frame) is Y-up; ROS (REP-103) is Z-up. The
-fixed rebase is a +90° rotation about X, leaving X unchanged. Giving
-that axis real-world meaning is calibration's job, not this rotation's.
-"""
+"""Converting solved-hand poses from xr_base (Y-up) to ROS (REP-103, Z-up)."""
 
 import math
 from dataclasses import dataclass
@@ -13,8 +8,9 @@ Quat = tuple[float, float, float, float]  # x, y, z, w
 
 IDENTITY: Quat = (0.0, 0.0, 0.0, 1.0)
 
-# OpenXR joints put +Z backward along the bone, so the wrist's forward
-# (toward the fingers) is -Z.
+UP_AXIS: Vec3 = (0.0, 0.0, 1.0)
+
+# OpenXR points +Z backward along the bone, so forward is -Z.
 _WRIST_FORWARD: Vec3 = (0.0, 0.0, -1.0)
 _MIN_HORIZONTAL = 0.2
 
@@ -26,6 +22,7 @@ def axis_angle(axis: Vec3, angle_rad: float) -> Quat:
     return (ax * s, ay * s, az * s, math.cos(angle_rad / 2.0))
 
 
+# Y-up to Z-up: +90 degrees about X, leaving X untouched.
 XR_BASE_TO_ROS: Quat = axis_angle((1.0, 0.0, 0.0), math.pi / 2.0)
 
 
@@ -69,18 +66,16 @@ def normalize_angle(rad: float) -> float:
 
 
 @dataclass(frozen=True)
-class Rebase:
-    """xr_base -> ROS, plus a yaw offset about the up axis. Defaults to
-    0.0 — data publishes immediately and correctly shaped, uncalibrated,
-    until `~/calibrate` gives the yaw real meaning."""
-
+class XrToRosConverter:
+    # A yaw of 0.0 is uncalibrated but correctly shaped, so data can
+    # publish before ~/calibrate has given the yaw real meaning.
     yaw_rad: float = 0.0
 
     def rotation(self) -> Quat:
-        yaw = axis_angle((0.0, 0.0, 1.0), self.yaw_rad)
+        yaw = axis_angle(UP_AXIS, self.yaw_rad)
         return q_normalize(q_mul(yaw, XR_BASE_TO_ROS))
 
-    def apply(self, position: Vec3, orientation: Quat) -> tuple[Vec3, Quat]:
+    def convert(self, position: Vec3, orientation: Quat) -> tuple[Vec3, Quat]:
         rotation = self.rotation()
         return q_rotate(rotation, position), q_normalize(q_mul(rotation, orientation))
 

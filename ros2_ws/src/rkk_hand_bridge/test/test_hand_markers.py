@@ -17,7 +17,7 @@ _JOINT_NAMES = (
 _IDENTITY = (0.0, 0.0, 0.0, 1.0)
 
 
-def _rebased(names=_JOINT_NAMES):
+def _converted(names=_JOINT_NAMES):
     # Distinct positions, so a wrongly-indexed endpoint is visible.
     return [((float(i), 0.0, 0.0), _IDENTITY) for i in range(len(names))]
 
@@ -25,7 +25,7 @@ def _rebased(names=_JOINT_NAMES):
 def _build(names=_JOINT_NAMES, radii=None, hand="right", **sizing):
     radii = [0.01] * len(names) if radii is None else radii
     return hand_markers.build(
-        hand, names, radii, _rebased(names), "world", TimeMsg(sec=1), DurationMsg(sec=1),
+        hand, names, radii, _converted(names), "world", TimeMsg(sec=1), DurationMsg(sec=1),
         **sizing,
     )
 

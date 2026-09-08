@@ -19,13 +19,13 @@ def test_xr_base_to_ros_leaves_x_unchanged():
     assert all(_close(a, b) for a, b in zip(v, (1.0, 0.0, 0.0)))
 
 
-def test_default_rebase_has_zero_yaw():
-    assert fc.Rebase().yaw_rad == 0.0
-    assert fc.Rebase().rotation() == fc.XR_BASE_TO_ROS
+def test_default_converter_has_zero_yaw():
+    assert fc.XrToRosConverter().yaw_rad == 0.0
+    assert fc.XrToRosConverter().rotation() == fc.XR_BASE_TO_ROS
 
 
 def test_measure_heading_of_identity_orientation():
-    # forward (-Z) rotates through the fixed rebase alone to +Y: heading pi/2.
+    # forward (-Z) rotates through the fixed conversion alone to +Y: heading pi/2.
     assert _close(fc.measure_heading(fc.IDENTITY), math.pi / 2.0)
 
 
@@ -37,14 +37,14 @@ def test_measure_heading_raises_when_too_vertical():
 
 def test_capture_yaw_offset_and_apply_align_to_facing():
     offset = fc.capture_yaw_offset(fc.IDENTITY, facing_rad=0.0)
-    rebase = fc.Rebase(yaw_rad=offset)
-    _, oriented = rebase.apply((0.0, 0.0, 0.0), fc.IDENTITY)
+    converter = fc.XrToRosConverter(yaw_rad=offset)
+    _, oriented = converter.convert((0.0, 0.0, 0.0), fc.IDENTITY)
     fx, fy, _ = fc.q_rotate(oriented, fc._WRIST_FORWARD)
     assert _close(math.atan2(fy, fx), 0.0, tol=1e-6)
 
 
-def test_rebase_apply_only_rotates_no_translation():
-    position, _ = fc.Rebase().apply((1.0, 2.0, 3.0), fc.IDENTITY)
+def test_convert_only_rotates_no_translation():
+    position, _ = fc.XrToRosConverter().convert((1.0, 2.0, 3.0), fc.IDENTITY)
     assert position != (1.0, 2.0, 3.0)  # rotated
-    origin, _ = fc.Rebase().apply((0.0, 0.0, 0.0), fc.IDENTITY)
+    origin, _ = fc.XrToRosConverter().convert((0.0, 0.0, 0.0), fc.IDENTITY)
     assert origin == (0.0, 0.0, 0.0)  # no anchor offset added

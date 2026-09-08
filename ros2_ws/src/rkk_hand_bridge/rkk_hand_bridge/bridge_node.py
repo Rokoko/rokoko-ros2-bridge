@@ -172,7 +172,7 @@ class BridgeNode(Node):
         self._description_pub.publish(msg)
 
     def _publish_joints(self, definition, frame):
-        rebase = fc.Rebase(yaw_rad=self._yaw_offset)
+        converter = fc.XrToRosConverter(yaw_rad=self._yaw_offset)
         stamp_source = self._stamp_sources.setdefault(
             frame.device_id, StampSource(self.get_parameter("stamp_source").value)
         )
@@ -183,23 +183,23 @@ class BridgeNode(Node):
             return  # backwards jump - drop, don't publish a stale-looking stamp
 
         stamp = _stamp_from_ns(stamp_ns)
-        rebased = [rebase.apply(j.position, j.orientation) for j in frame.joints]
+        converted = [converter.convert(j.position, j.orientation) for j in frame.joints]
 
         msg = HandJoints()
         msg.header.stamp = stamp
         msg.hand = _hand_code(definition.hand)
         msg.device_id = frame.device_id
         msg.timestamp_us = frame.timestamp_us
-        msg.joints = [_to_pose(position, orientation) for position, orientation in rebased]
+        msg.joints = [_to_pose(position, orientation) for position, orientation in converted]
         self._joints_pub.publish(msg)
 
         if self.get_parameter("publish_tf").value:
-            self._broadcast_tf(definition, rebased, stamp)
+            self._broadcast_tf(definition, converted, stamp)
 
         if self.get_parameter("publish_markers").value:
-            self._publish_markers(definition, rebased, stamp)
+            self._publish_markers(definition, converted, stamp)
 
-    def _broadcast_tf(self, definition, rebased, stamp: TimeMsg):
+    def _broadcast_tf(self, definition, converted, stamp: TimeMsg):
         parent_frame_id = self.get_parameter("parent_frame_id").value
         if not parent_frame_id:
             if not self._warned_no_parent_frame:
@@ -208,7 +208,7 @@ class BridgeNode(Node):
             return
 
         transforms = []
-        for name, (position, orientation) in zip(definition.joint_names, rebased):
+        for name, (position, orientation) in zip(definition.joint_names, converted):
             t = TransformStamped()
             t.header.stamp = stamp
             t.header.frame_id = parent_frame_id
@@ -233,7 +233,7 @@ class BridgeNode(Node):
         self._last_marker_ns[device_id] = now_ns
         return True
 
-    def _publish_markers(self, definition, rebased, stamp: TimeMsg):
+    def _publish_markers(self, definition, converted, stamp: TimeMsg):
         if not self._due_for_markers(definition.device_id):
             return
 
@@ -252,7 +252,7 @@ class BridgeNode(Node):
                 definition.hand,
                 definition.joint_names,
                 definition.joint_radii,
-                rebased,
+                converted,
                 frame_id,
                 stamp,
                 lifetime,

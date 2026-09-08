@@ -1,7 +1,7 @@
 """MarkerArray rendering of a solved hand, for RViz.
 
 TF alone draws 26 identical axis triads per hand, which reads as
-coordinate-frame soup rather than a hand. This turns the same rebased
+coordinate-frame soup rather than a hand. This turns the same converted
 poses into a sphere per joint (sized from the description's joint radii)
 plus a LINE_LIST skeleton, which reads as a hand at a glance.
 
@@ -73,7 +73,7 @@ def build(
     hand: str,
     joint_names,
     joint_radii,
-    rebased: list[tuple[Vec3, Quat]],
+    converted: list[tuple[Vec3, Quat]],
     frame_id: str,
     stamp,
     lifetime,
@@ -82,7 +82,7 @@ def build(
 ) -> MarkerArray:
     """One sphere per joint plus a single LINE_LIST of bones.
 
-    `rebased` is the same (position, orientation) list published as
+    `converted` is the same (position, orientation) list published as
     HandJoints and TF, so markers cost no extra maths and cannot drift
     out of step with them. Joints named in BONES but absent from
     `joint_names` are skipped rather than raising - a description with a
@@ -94,7 +94,7 @@ def build(
     array = MarkerArray()
     index_of = {name: i for i, name in enumerate(joint_names)}
 
-    for i, (name, (position, _orientation)) in enumerate(zip(joint_names, rebased)):
+    for i, (name, (position, _orientation)) in enumerate(zip(joint_names, converted)):
         radius = joint_radii[i] if i < len(joint_radii) else 0.0
         radius = min(radius * scale, max_radius_m) if max_radius_m > 0.0 else radius * scale
         diameter = 2.0 * max(radius, _MIN_RADIUS_M)
@@ -131,7 +131,7 @@ def build(
         if parent not in index_of or child not in index_of:
             continue
         for endpoint in (index_of[parent], index_of[child]):
-            position = rebased[endpoint][0]
+            position = converted[endpoint][0]
             bones.points.append(Point(x=position[0], y=position[1], z=position[2]))
     array.markers.append(bones)
 
