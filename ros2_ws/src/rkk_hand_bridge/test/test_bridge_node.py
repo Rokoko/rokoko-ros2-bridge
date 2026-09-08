@@ -480,3 +480,28 @@ def test_a_zero_marker_rate_publishes_every_frame():
         node.destroy_node()
     finally:
         rclpy.shutdown()
+
+
+def test_changing_stamp_source_takes_effect_on_a_connected_hand():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(stream=stream)
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+
+        sock.feed(_definition_bytes())
+        sock.feed(_data_bytes())
+        assert _spin_until(executor, lambda: 7 in node._stamp_sources, 5.0)
+        assert node._stamp_sources[7].mode == "auto"
+
+        node.set_parameters([Parameter("stamp_source", value="receive")])
+        sock.feed(_data_bytes(timestamp_us=2_000_000))
+        assert _spin_until(
+            executor, lambda: node._stamp_sources[7].mode == "receive", 5.0
+        )
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()

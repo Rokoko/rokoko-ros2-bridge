@@ -41,7 +41,7 @@ class StampSource:
     def __init__(self, mode: str = "auto"):
         if mode not in MODES:
             raise ValueError(f"unknown stamp_source mode: {mode!r}")
-        self._mode = mode
+        self.mode = mode
         self._offset = _WindowedMinimum(OFFSET_WINDOW_NS)
         self._last_stamp_ns = None
         self.dropped = 0
@@ -52,7 +52,7 @@ class StampSource:
         be dropped for going backwards relative to the last one. A
         backwards step past CLOCK_RESET_NS restarts from the new clock
         instead."""
-        mode = self._mode if self._mode != "auto" else self._auto_mode(timestamp_epoch)
+        mode = self.mode if self.mode != "auto" else self._auto_mode(timestamp_epoch)
         if mode == "epoch":
             stamp_ns = timestamp_us * 1000
         elif mode == "offset":

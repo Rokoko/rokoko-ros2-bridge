@@ -173,9 +173,7 @@ class BridgeNode(Node):
 
     def _publish_joints(self, definition, frame):
         converter = fc.XrToRosConverter(yaw_rad=self._yaw_offset)
-        stamp_source = self._stamp_sources.setdefault(
-            frame.device_id, StampSource(self.get_parameter("stamp_source").value)
-        )
+        stamp_source = self._stamp_source_for(frame.device_id)
 
         receive_time_ns = self.get_clock().now().nanoseconds
         stamp_ns = stamp_source.compute(frame.timestamp_us, definition.timestamp_epoch, receive_time_ns)
@@ -203,6 +201,14 @@ class BridgeNode(Node):
 
         if self.get_parameter("publish_markers").value:
             self._publish_markers(definition, converted, stamp)
+
+    def _stamp_source_for(self, device_id: int) -> StampSource:
+        mode = self.get_parameter("stamp_source").value
+        source = self._stamp_sources.get(device_id)
+        if source is None or source.mode != mode:
+            source = StampSource(mode)
+            self._stamp_sources[device_id] = source
+        return source
 
     def _broadcast_tf(self, definition, converted, stamp: TimeMsg):
         parent_frame_id = self.get_parameter("parent_frame_id").value
