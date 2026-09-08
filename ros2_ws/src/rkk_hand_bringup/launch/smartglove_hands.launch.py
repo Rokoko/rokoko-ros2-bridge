@@ -1,6 +1,7 @@
 import os
 
 import yaml
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -12,40 +13,31 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
-# Used when a key is absent from the config file, so a partial config
-# (e.g. only `driver:`) still produces the documented command lines.
-DEFAULTS = {
-    "driver": {
-        "spawn": False,
-        "executable": "rokoko-sdk",
-        "args": ["-vv", "--auto-stream-usb", "-ef", "1024"],
-    },
-    "solver": {
-        "executable": "rkk-hand-solver",
-        "args": ["--emit-openxr"],
-        "driver_args": ["-ef", "1024"],
-    },
-}
+MODES = ("external", "solver", "launch")
 
 
-def _load(path):
-    """Merge the config file over DEFAULTS, one level deep."""
-    merged = {section: dict(values) for section, values in DEFAULTS.items()}
-    if not path:
-        return merged
+def _shipped_config():
+    return os.path.join(
+        get_package_share_directory("rkk_hand_bringup"), "config", "upstream.yaml"
+    )
+
+
+def _read(path):
     if not os.path.exists(path):
         raise RuntimeError(f"upstream config not found: {path}")
     with open(path) as handle:
-        loaded = yaml.safe_load(handle) or {}
-    for section, values in loaded.items():
-        if section not in merged:
-            raise RuntimeError(f"unknown section in {path}: {section}")
-        merged[section].update(values or {})
-    return merged
+        return yaml.safe_load(handle) or {}
 
 
-def _as_bool(value):
-    return str(value).strip().lower() in ("1", "true", "yes")
+def _load(path):
+    """The shipped config is the default; `path` merges over it, one level deep."""
+    config = _read(_shipped_config())
+    if path and os.path.abspath(path) != os.path.abspath(_shipped_config()):
+        for section, values in _read(path).items():
+            if section not in config:
+                raise RuntimeError(f"unknown section in {path}: {section}")
+            config[section].update(values or {})
+    return config
 
 
 def _setup(context, *_args, **_kwargs):
@@ -55,32 +47,28 @@ def _setup(context, *_args, **_kwargs):
     config = _load(arg("config"))
     driver, solver = config["driver"], config["solver"]
 
-    # Precedence: explicit launch argument > config file > DEFAULTS.
-    spawn_solver = _as_bool(arg("spawn_solver"))
-    spawn_driver = _as_bool(arg("spawn_driver")) if arg("spawn_driver") else _as_bool(driver["spawn"])
-
-    driver_args = list(driver["args"])
-    solver_driver_args = list(solver["driver_args"])
-    # Back-compat: the retired epoch toggle still drops the -ef pair.
-    if arg("spawn_solver_epoch_flag") and not _as_bool(arg("spawn_solver_epoch_flag")):
-        solver_driver_args = []
-        driver_args = [a for a in driver_args if a not in ("-ef", "1024")]
+    # Explicit launch argument wins over the config file.
+    mode = arg("driver_mode") or driver["mode"]
+    if mode not in MODES:
+        raise RuntimeError(f"driver.mode must be one of {', '.join(MODES)}, got: {mode}")
 
     actions = []
+    # driver_args only reach a driver the solver itself starts; in the other
+    # modes the driver's arguments come from driver.args or from the user.
+    driver_args = list(solver.get("driver_args") or []) if mode == "solver" else []
 
-    if spawn_driver:
+    if mode == "launch":
         actions.append(
-            ExecuteProcess(cmd=[driver["executable"], *driver_args], output="screen")
+            ExecuteProcess(cmd=[driver["executable"], *driver["args"]], output="screen")
         )
 
-    if spawn_solver:
+    if arg("spawn_solver").strip().lower() in ("1", "true", "yes"):
         cmd = [solver["executable"], *solver["args"]]
-        if spawn_driver:
-            # The driver is already ours; don't let the solver start a second.
-            cmd.append("--no-driver")
+        if mode == "solver":
+            cmd += [f"--driver-arg={value}" for value in driver_args]
         else:
-            for driver_arg in solver_driver_args:
-                cmd.append(f"--driver-arg={driver_arg}")
+            # Either we started the driver, or the user did. Don't start a second.
+            cmd.append("--no-driver")
         actions.append(ExecuteProcess(cmd=cmd, output="screen"))
 
     actions.append(
@@ -96,16 +84,12 @@ def _setup(context, *_args, **_kwargs):
 
 
 def generate_launch_description():
-    default_config = PathJoinSubstitution(
-        [FindPackageShare("rkk_hand_bringup"), "config", "upstream.yaml"]
-    )
     return LaunchDescription(
         [
-            DeclareLaunchArgument("config", default_value=default_config),
+            DeclareLaunchArgument("config", default_value=""),
             DeclareLaunchArgument("spawn_solver", default_value="true"),
-            # Empty means "defer to the config file".
-            DeclareLaunchArgument("spawn_driver", default_value=""),
-            DeclareLaunchArgument("spawn_solver_epoch_flag", default_value=""),
+            # Empty means "use driver.mode from the config file".
+            DeclareLaunchArgument("driver_mode", default_value=""),
             OpaqueFunction(function=_setup),
         ]
     )

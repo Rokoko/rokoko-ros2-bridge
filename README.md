@@ -66,10 +66,12 @@ below for what those two processes are and why nothing else is needed.
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py
 ```
 
-This spawns `rkk-hand-solver --emit-openxr` (with epoch timestamps enabled
-by default — see `spawn_solver_epoch_flag` below) and the bridge together.
-It assumes the driver (`rokoko-sdk`) is already running separately — this
-launch file only manages the solver, not the driver.
+This spawns `rkk-hand-solver --emit-openxr --no-driver` and the bridge
+together. It assumes the driver (`rokoko-sdk`) is already running
+separately — under the default `driver.mode: external` this launch file
+manages the solver, not the driver. Set `driver.mode` to `solver` or
+`launch` if you'd rather it brought the driver up too; see
+[Configuring the solver and driver](#configuring-the-solver-and-driver).
 
 **Option B — attach to a solver that's already running** (e.g. you started
 it by hand, or another tool already has it up):
@@ -88,57 +90,51 @@ Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `parent_frame_id` (required if `publish_tf:=true`), `stamp_source`
 (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
-takes `spawn_solver` (default `true`), `spawn_driver`, and `config` —
+takes `spawn_solver` (default `true`), `driver_mode`, and `config` —
 see below.
 
 ### Configuring the solver and driver
 
 The solver and driver are plain subprocesses, not ROS nodes, so their
 arguments don't come from a ROS parameter file. `rkk_hand_bringup` reads
-them from `config/upstream.yaml` instead:
+them from `config/upstream.yaml`, which *is* the default — there is no
+second set of defaults hidden in the launch file. `config:=/path/to/my.yaml`
+merges over it, so a partial file only needs the keys it changes.
+
+`driver.mode` decides who starts `rokoko-sdk`:
+
+| mode | driver started by | solver gets |
+| --- | --- | --- |
+| `external` (default) | you, beforehand | `--no-driver` |
+| `solver` | the solver | `--driver-arg=…` per `solver.driver_args` |
+| `launch` | this launch file, from `driver.args` | `--no-driver` |
+
+The default is `external` because starting the driver is your call — it
+matches [Running the upstream chain](#running-the-upstream-chain) below.
+A bare `ros2 launch rkk_hand_bringup smartglove_hands.launch.py` therefore
+starts the solver and bridge only, and expects a driver already running.
+
+In `solver` mode the solver applies its own built-in defaults
+(`-vv --auto-stream-usb`) and appends `solver.driver_args` after them, so
+`--driver-arg` can only *add* arguments, never remove a solver default —
+and repeating one there duplicates it on the driver's command line. Use
+`launch` mode when you need full control, e.g. **gloves on WiFi rather
+than USB**: WiFi is the driver's native path (it is a UDP server on
+`--driver-udp-port`, default `14041`), and `--auto-stream-usb` exists only
+to make USB/serial devices behave the way WiFi ones already do. It is
+harmless with no USB device attached, but dropping it needs `launch` mode:
 
 ```yaml
 driver:
-  spawn: false                                        # solver spawns it
-  executable: rokoko-sdk
-  args: ["-vv", "--auto-stream-usb", "-ef", "1024"]
-solver:
-  executable: rkk-hand-solver
-  args: ["--emit-openxr"]
-  driver_args: ["-ef", "1024"]                        # via --driver-arg
-```
-
-Those defaults reproduce the previous hardcoded behavior exactly. Point
-`config:=/path/to/my.yaml` at your own file to change them; sections and
-keys you omit fall back to the defaults above, so a partial file is fine.
-
-`driver.spawn` is the important switch. Left `false`, the solver starts
-the driver, applying its own built-in defaults (`-vv --auto-stream-usb`)
-with `solver.driver_args` appended after them — so `--driver-arg` can
-only *add* arguments, never remove a solver default. Set it `true` and
-this launch file starts the driver itself, `driver.args` becomes the
-complete argument list, and the solver gets `--no-driver`.
-
-That matters for **gloves on WiFi rather than USB**: WiFi is the driver's
-native path (it is a UDP server on `--driver-udp-port`, default `14041`),
-and `--auto-stream-usb` exists only to make USB/serial devices behave the
-way WiFi ones already do. It is harmless with no USB device attached, but
-dropping it needs `driver.spawn: true`:
-
-```yaml
-driver:
-  spawn: true
+  mode: launch
   args: ["-vv", "-ef", "1024"]
 ```
 
-Note that WiFi gloves must be on the same network and pointed at this
-machine's LAN address, not `127.0.0.1`.
+WiFi gloves must be on the same network and pointed at this machine's LAN
+address, not `127.0.0.1`.
 
-Launch arguments override the config file: `spawn_driver:=true|false`
-overrides `driver.spawn`, and `spawn_solver:=false` skips the solver
-regardless. `spawn_solver_epoch_flag` is retained for compatibility —
-setting it to `false` still strips the `-ef 1024` pair — but
-`driver.args`/`driver_args` supersede it.
+`driver_mode:=external|solver|launch` overrides the file for one run, and
+`spawn_solver:=false` skips the solver regardless of mode.
 
 ## Verifying it's working
 
