@@ -38,6 +38,10 @@ _UNSUPPORTED_HELP = {
     ),
 }
 
+
+def _unsupported_help(reason: str) -> str:
+    return _UNSUPPORTED_HELP.get(reason, reason)
+
 _LATCHED_QOS = QoSProfile(
     depth=1,
     reliability=QoSReliabilityPolicy.RELIABLE,
@@ -141,7 +145,7 @@ class BridgeNode(Node):
 
     def _on_unsupported_hand(self, device_id: int, reason: str):
         self._unsupported[device_id] = reason
-        self.get_logger().warning(f"solved hand {device_id}: {_UNSUPPORTED_HELP[reason]}")
+        self.get_logger().warning(f"solved hand {device_id}: {_unsupported_help(reason)}")
 
     def _watch(self):
         seen = 0
@@ -338,7 +342,7 @@ class BridgeNode(Node):
             status.hardware_id = str(device_id)
             status.name = f"rkk_hand_bridge: unsupported hand {device_id}"
             status.level = DiagnosticStatus.ERROR
-            status.message = _UNSUPPORTED_HELP[reason]
+            status.message = _unsupported_help(reason)
             status.values = [KeyValue(key="reason", value=reason)]
             array.status.append(status)
 
