@@ -434,7 +434,11 @@ class BridgeNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = BridgeNode()
+    try:
+        node = BridgeNode()
+    except Exception:
+        rclpy.shutdown()
+        raise
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
