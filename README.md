@@ -66,12 +66,11 @@ below for what those two processes are and why nothing else is needed.
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py
 ```
 
-This spawns `rkk-hand-solver --emit-openxr --no-driver` and the bridge
-together. It assumes the driver (`rokoko-sdk`) is already running
-separately — under the default `driver.mode: external` this launch file
-manages the solver, not the driver. Set `driver.mode` to `solver` or
-`launch` if you'd rather it brought the driver up too; see
-[Configuring the solver and driver](#configuring-the-solver-and-driver).
+This spawns the solver and the bridge together, using the command in
+`config/upstream.yaml` — `rkk-hand-solver --emit-openxr` plus its
+`--driver-arg` values, which makes the solver start `rokoko-sdk` itself.
+See [Configuring the solver and driver](#configuring-the-solver-and-driver)
+to change that command.
 
 **Option B — attach to a solver that's already running** (e.g. you started
 it by hand, or another tool already has it up):
@@ -90,8 +89,7 @@ Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `parent_frame_id` (required if `publish_tf:=true`), `stamp_source`
 (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
-takes `spawn_solver` (default `true`), `driver_mode`, and `config` —
-see below.
+takes `spawn_solver` (default `true`) and `config` — see below.
 
 ### Configuring the solver and driver
 
@@ -107,39 +105,38 @@ solver:
   driver_args: ["--auto-stream-usb", "-ef", "1024"]
 ```
 
-`config:=/path/to/my.yaml` merges over it, so a partial file only needs
-the keys it changes.
+`args` is passed through verbatim, and each entry of `driver_args` is
+forwarded as `--driver-arg=<value>`. `config:=/path/to/my.yaml` merges
+over this file, so a partial file only needs the keys it changes.
 
-Starting the driver is your call, so by default nothing here starts one
-and the solver is given `--no-driver`. Add a `driver` section (or pass
-`driver_mode:=…`) to change that:
+Whether a driver gets started is therefore decided by what you put in
+`args`, not by the launch file. With the file above the solver spawns
+`rokoko-sdk` itself, applying its own built-in defaults
+(`-vv --auto-stream-usb`) with `driver_args` appended after them — which
+means `driver_args` can only *add* arguments, never remove a solver
+default. Put `--no-driver` in `args` to attach to a driver you started
+yourself.
 
-| `driver.mode` | driver started by | solver gets |
-| --- | --- | --- |
-| absent, or `external` | you, beforehand | `--no-driver` |
-| `solver` | the solver | `--driver-arg=…` per `solver.driver_args` |
-| `launch` | this launch file, from `driver.args` | `--no-driver` |
-
-In `solver` mode the solver applies its own built-in defaults
-(`-vv --auto-stream-usb`) and appends `solver.driver_args` after them, so
-`--driver-arg` can only *add* arguments, never remove a solver default.
-Use `launch` mode when you need the full command line, e.g. **gloves on
-WiFi rather than USB**: WiFi is the driver's native path (it is a UDP
-server on `--driver-udp-port`, default `14041`), and `--auto-stream-usb`
-exists only to make USB/serial devices behave the way WiFi ones already
-do. Dropping it needs `launch` mode:
+To remove a solver default you need the launch file to run the driver, so
+add an optional `driver` section giving the complete command. That is the
+case for **gloves on WiFi rather than USB**: WiFi is the driver's native
+path (it is a UDP server on `--driver-udp-port`, default `14041`), and
+`--auto-stream-usb` exists only to make USB/serial devices behave the way
+WiFi ones already do.
 
 ```yaml
+solver:
+  args: ["--emit-openxr", "--no-driver"]
 driver:
-  mode: launch
   executable: rokoko-sdk
   args: ["-vv", "-ef", "1024"]
 ```
 
-WiFi gloves must be on the same network and pointed at this machine's LAN
-address, not `127.0.0.1`.
+A `driver` section without `--no-driver` in `solver.args` is rejected at
+launch, since both would start a driver. WiFi gloves must also be on the
+same network and pointed at this machine's LAN address, not `127.0.0.1`.
 
-`spawn_solver:=false` skips the solver regardless of mode.
+`spawn_solver:=false` starts the bridge alone.
 
 ## Verifying it's working
 

@@ -13,8 +13,7 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
-MODES = ("external", "solver", "launch")
-MODES_BY_SECTION = ("driver", "solver")
+SECTIONS = ("solver", "driver")
 
 
 def _shipped_config():
@@ -35,7 +34,7 @@ def _load(path):
     config = _read(_shipped_config())
     if path and os.path.abspath(path) != os.path.abspath(_shipped_config()):
         for section, values in _read(path).items():
-            if section not in MODES_BY_SECTION:
+            if section not in SECTIONS:
                 raise RuntimeError(f"unknown section in {path}: {section}")
             config.setdefault(section, {}).update(values or {})
     return config
@@ -47,22 +46,19 @@ def _setup(context, *_args, **_kwargs):
 
     config = _load(arg("config"))
     solver = config["solver"]
-    # No `driver` section means nobody here starts one — that is the user's job.
+    # Optional. Present means this launch file starts the driver itself.
     driver = config.get("driver") or {}
 
-    # Explicit launch argument wins over the config file.
-    mode = arg("driver_mode") or driver.get("mode", "external")
-    if mode not in MODES:
-        raise RuntimeError(f"driver.mode must be one of {', '.join(MODES)}, got: {mode}")
+    solver_args = list(solver.get("args") or [])
+    if driver and "--no-driver" not in solver_args:
+        raise RuntimeError(
+            "config has a `driver` section, so this launch file starts the driver, "
+            "but solver.args does not contain --no-driver — the solver would start "
+            "a second one. Add --no-driver to solver.args, or drop the driver section."
+        )
 
     actions = []
-    # driver_args only reach a driver the solver itself starts; in the other
-    # modes the driver's arguments come from driver.args or from the user.
-    driver_args = list(solver.get("driver_args") or []) if mode == "solver" else []
-
-    if mode == "launch":
-        if "executable" not in driver:
-            raise RuntimeError("driver.mode is 'launch' but driver.executable is not set")
+    if driver:
         actions.append(
             ExecuteProcess(
                 cmd=[driver["executable"], *(driver.get("args") or [])], output="screen"
@@ -70,12 +66,10 @@ def _setup(context, *_args, **_kwargs):
         )
 
     if arg("spawn_solver").strip().lower() in ("1", "true", "yes"):
-        cmd = [solver["executable"], *solver["args"]]
-        if mode == "solver":
-            cmd += [f"--driver-arg={value}" for value in driver_args]
-        else:
-            # Either we started the driver, or the user did. Don't start a second.
-            cmd.append("--no-driver")
+        # solver.args is passed through verbatim; whether the solver spawns a
+        # driver is decided by what is in it (i.e. --no-driver), not by us.
+        cmd = [solver["executable"], *solver_args]
+        cmd += [f"--driver-arg={value}" for value in solver.get("driver_args") or []]
         actions.append(ExecuteProcess(cmd=cmd, output="screen"))
 
     actions.append(
@@ -95,8 +89,6 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("config", default_value=""),
             DeclareLaunchArgument("spawn_solver", default_value="true"),
-            # Empty means "use driver.mode from the config file".
-            DeclareLaunchArgument("driver_mode", default_value=""),
             OpaqueFunction(function=_setup),
         ]
     )
