@@ -91,8 +91,8 @@ Useful launch arguments (pass as `name:=value`): `solver_host`,
 `0.5`), `marker_rate_hz` (default `30`), `marker_joint_scale`,
 `marker_max_joint_radius_m`, `parent_frame_id` (required if `publish_tf` or `publish_markers`
 is set), `stamp_source` (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
-takes `spawn_solver` (default `true`), `config`, `rviz` (default
-`false`) and `rviz_config` — see below.
+takes `spawn_solver` (default `true`), `config` and `rviz` (default
+`false`) — see below.
 
 ### Configuring the solver and driver
 
@@ -177,35 +177,42 @@ the same rebased poses it publishes, and both needing a non-empty
   joint. Correct and useful for debugging orientations, but 26 axis
   triads per hand read as clutter rather than as a hand.
 
-`rviz:=true` opens RViz with a packaged config
-(`rkk_hand_bringup/rviz/smartglove_hands.rviz`) that already has the
-markers display, a 1m grid and a hand-scale camera set up, so there is
-nothing to add by hand:
-
 ```sh
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
   publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
-`rviz_config:=/path/to/my.rviz` uses your own file instead. To run RViz
-separately, point it at the same config:
+`rviz:=true` just starts `rviz2` alongside the bridge; no config is
+passed, so RViz opens with its own settings and keeps whatever you last
+saved. Leave it off and run `rviz2` yourself if you prefer.
 
-```sh
-rviz2 -d "$(ros2 pkg prefix rkk_hand_bringup)/share/rkk_hand_bringup/rviz/smartglove_hands.rviz"
-```
+**Setting the display up, once.** In RViz:
 
-The config's **Fixed Frame** is `world`; if you use a different
-`parent_frame_id`, change it to match (Global Options, top-left). RViz
-needs that frame to exist in TF before it will draw anything positioned
-in it, which is why the command above also passes `publish_tf:=true` —
-it costs you no clutter, it just gives the frame something to exist in.
-That does tie the frame's existence to the data stream, so if the gloves
-drop out the frame goes with them; anchoring it independently avoids
-that:
+1. **Global Options** (top-left) → **Fixed Frame** → `world`, or whatever
+   you passed as `parent_frame_id`.
+2. **Add** → **By topic** → `/rkk_hand_bridge/hand/markers` →
+   **MarkerArray**.
+
+Then **File → Save Config** (Ctrl-S) and RViz will reopen like that every
+time.
+
+RViz needs the fixed frame to exist in TF before it will draw anything
+positioned in it, which is why the command above also passes
+`publish_tf:=true` — it costs you no clutter unless you add a TF display,
+it just gives the frame something to exist in. That does tie the frame's
+existence to the data stream, so if the gloves drop out the frame goes
+with them. Anchoring it independently avoids that:
 
 ```sh
 ros2 run tf2_ros static_transform_publisher --frame-id world --child-frame-id rkk_hand_anchor
 ```
+
+**If the hand flickers**, check any **Grid** display you have added. A
+fine grid (10cm cells, say) puts semi-transparent lines straight through
+the markers at z=0, and transparent geometry intersecting the spheres
+makes the renderer's depth sorting unstable — which looks like the whole
+hand blinking. A coarse grid (1m cells, RViz's default) keeps its lines
+clear of the hand entirely.
 
 Every connected hand appears automatically, left and right in different
 colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
@@ -230,12 +237,6 @@ To see joint frames as well, add a **TF** display yourself (**Add** →
 `0.02`–`0.05` — TF's default is meant for room-scale robots and a hand's
 joints are centimeters apart. **Show Names** labels them
 `rkk_<hand>_hand_xr_<joint_name>`.
-
-Keep any grid you add coarse relative to the hand. A fine grid (say 10cm
-cells) puts semi-transparent lines straight through the markers at z=0,
-and transparent geometry intersecting the spheres makes the renderer's
-depth sorting unstable — which looks like the whole hand flickering. The
-packaged config's 1m cells keep the grid clear of the hand entirely.
 
 ### Sizing the joint spheres
 

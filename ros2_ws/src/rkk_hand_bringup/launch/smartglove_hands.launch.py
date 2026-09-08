@@ -23,12 +23,6 @@ def _shipped_config():
     )
 
 
-def _shipped_rviz_config():
-    return os.path.join(
-        get_package_share_directory("rkk_hand_bringup"), "rviz", "smartglove_hands.rviz"
-    )
-
-
 def _read(path):
     if not os.path.exists(path):
         raise RuntimeError(f"upstream config not found: {path}")
@@ -90,16 +84,11 @@ def _setup(context, *_args, **_kwargs):
     )
 
     if arg("rviz").strip().lower() in ("1", "true", "yes"):
-        # Opens with the markers display already configured, so there is
-        # nothing to add by hand.
+        # No -d: RViz opens with its own settings, so whatever you last
+        # saved is what you get. See the README for the two displays to
+        # add the first time.
         actions.append(
-            Node(
-                package="rviz2",
-                executable="rviz2",
-                name="rviz2",
-                output="screen",
-                arguments=["-d", arg("rviz_config") or _shipped_rviz_config()],
-            )
+            Node(package="rviz2", executable="rviz2", name="rviz2", output="screen")
         )
 
     return actions
@@ -111,7 +100,6 @@ def generate_launch_description():
             DeclareLaunchArgument("config", default_value=""),
             DeclareLaunchArgument("spawn_solver", default_value="true"),
             DeclareLaunchArgument("rviz", default_value="false"),
-            DeclareLaunchArgument("rviz_config", default_value=""),
             OpaqueFunction(function=_setup),
         ]
     )
