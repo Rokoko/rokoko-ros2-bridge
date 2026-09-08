@@ -16,6 +16,7 @@
   <depend>tf2_ros</depend>
   <depend>std_srvs</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>visualization_msgs</depend>
 
   <test_depend>python3-pytest</test_depend>
 

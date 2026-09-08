@@ -9,6 +9,7 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
 from std_srvs.srv import Trigger
 from tf2_msgs.msg import TFMessage
+from visualization_msgs.msg import Marker, MarkerArray
 
 from rkk_hand_bridge import rgmp_client as rgmp
 from rkk_hand_bridge.bridge_node import _LATCHED_QOS, _SENSOR_QOS, BridgeNode
@@ -294,6 +295,149 @@ def test_diagnostics_reflects_connection_and_calibration_state():
         assert _spin_until(executor, lambda: statuses, 5.0)
         assert statuses[-1].status[0].level == DiagnosticStatus.ERROR
         assert statuses[-1].status[0].message == "disconnected"
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_publish_markers_requires_a_parent_frame_id():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("publish_markers", value=True)],
+        )
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+
+        sock.feed(_definition_bytes())
+        sock.feed(_data_bytes())
+        # no parent_frame_id set: should warn and not crash, not publish
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            executor.spin_once(timeout_sec=0.1)
+        assert node._warned_no_marker_frame
+
+        node.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_publish_markers_draws_the_hand_in_the_parent_frame():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[
+                Parameter("publish_markers", value=True),
+                Parameter("parent_frame_id", value="world"),
+            ],
+        )
+        recorder = rclpy.create_node("marker_recorder")
+        received = []
+        sub = recorder.create_subscription(
+            MarkerArray, "/rkk_hand_bridge/hand/markers", received.append, 10
+        )
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes())
+        assert _spin_until(executor, lambda: sub.get_publisher_count() > 0, 5.0)
+        sock.feed(_data_bytes())
+        assert _spin_until(executor, lambda: received, 5.0)
+
+        markers = received[0].markers
+        spheres = [m for m in markers if m.type == Marker.SPHERE]
+        bones = [m for m in markers if m.type == Marker.LINE_LIST]
+        assert len(spheres) == rgmp.JOINT_COUNT
+        assert len(bones) == 1
+        assert all(m.header.frame_id == "world" for m in markers)
+        # markers and TF/HandJoints must describe the same hand, so the
+        # marker stamp is the joints stamp, not a fresh clock reading.
+        assert all(m.header.stamp.sec == 1 for m in markers)
+        assert all("right" in m.ns for m in markers)
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_markers_are_not_published_unless_asked_for():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("parent_frame_id", value="world")],
+        )
+        recorder = rclpy.create_node("marker_recorder")
+        received = []
+        recorder.create_subscription(
+            MarkerArray, "/rkk_hand_bridge/hand/markers", received.append, 10
+        )
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes())
+        sock.feed(_data_bytes())
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            executor.spin_once(timeout_sec=0.1)
+        assert received == []
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
+def test_a_disconnecting_hand_clears_its_markers():
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        stream = HandStream("h", 0, connect=lambda: sock)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[
+                Parameter("publish_markers", value=True),
+                Parameter("parent_frame_id", value="world"),
+            ],
+        )
+        recorder = rclpy.create_node("marker_recorder")
+        received = []
+        sub = recorder.create_subscription(
+            MarkerArray, "/rkk_hand_bridge/hand/markers", received.append, 10
+        )
+
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes())
+        assert _spin_until(executor, lambda: sub.get_publisher_count() > 0, 5.0)
+        sock.feed(_data_bytes())
+        assert _spin_until(executor, lambda: received, 5.0)
+
+        sock.feed(_disconnect_bytes())
+        assert _spin_until(
+            executor,
+            lambda: any(
+                m.action == Marker.DELETEALL for array in received for m in array.markers
+            ),
+            5.0,
+        )
 
         node.destroy_node()
         recorder.destroy_node()

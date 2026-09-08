@@ -87,8 +87,9 @@ ros2 launch rkk_hand_bridge hand_bridge.launch.py
 
 Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
-`parent_frame_id` (required if `publish_tf:=true`), `stamp_source`
-(default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
+`publish_markers` (default `false`), `marker_lifetime_s` (default
+`0.5`), `parent_frame_id` (required if `publish_tf` or `publish_markers`
+is set), `stamp_source` (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
 takes `spawn_solver` (default `true`) and `config` — see below.
 
 ### Configuring the solver and driver
@@ -161,13 +162,22 @@ and `OK`/"connected" immediately after a successful call.
 
 ## Visualizing in RViz
 
-`HandJoints` is a custom message, so RViz has no built-in display for it —
-the only thing RViz can draw directly is the opt-in **TF** broadcast. Launch
-with `publish_tf` on and a real `parent_frame_id` (TF needs a non-empty
-parent; the bridge refuses to guess one):
+`HandJoints` is a custom message, so RViz has no built-in display for it.
+The bridge offers two opt-in ways to draw the hand instead, both built from
+the same rebased poses it publishes, and both needing a non-empty
+`parent_frame_id` (the bridge refuses to guess one):
+
+- **`publish_markers`** — a `visualization_msgs/MarkerArray` on
+  `~/hand/markers`: a sphere per joint, sized from the description's
+  `joint_radii`, joined by a line skeleton. This is the one that looks
+  like a hand.
+- **`publish_tf`** — the raw TF broadcast: a full coordinate frame per
+  joint. Correct and useful for debugging orientations, but 26 axis
+  triads per hand read as clutter rather than as a hand.
 
 ```sh
-ros2 launch rkk_hand_bringup smartglove_hands.launch.py publish_tf:=true parent_frame_id:=world
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
+  publish_markers:=true parent_frame_id:=world
 ```
 
 Then, in another sourced shell:
@@ -180,18 +190,24 @@ In RViz:
 
 1. Set **Fixed Frame** (top-left, Global Options) to `world` (or whatever
    you passed as `parent_frame_id`).
-2. **Add** → **By display type** → **TF**.
+2. **Add** → **By topic** → `/rkk_hand_bridge/hand/markers` →
+   **MarkerArray**.
 
-That's it — every joint of every connected hand shows up automatically, no
-per-joint configuration needed (all 26 joints × however many hands are
-connected get broadcast every frame). Two things worth doing to make it
-readable rather than just correct:
+Every connected hand appears automatically, left and right in different
+colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
+namespace each — so you can toggle spheres and skeleton independently in
+the display's **Namespaces** list.
 
-- The TF display's **Marker Scale** defaults to a size meant for room-scale
-  robots; a hand's joints are centimeters apart, so turn it down (try
-  `0.02`–`0.05`) or the axis markers will overlap into a blob.
-- Enable **Show Names** on the TF display if you want to tell joints apart
-  by label (`rkk_<hand>_hand_xr_<joint_name>`) rather than by position alone.
+Markers carry a `marker_lifetime_s` (default `0.5`) lifetime, so if the
+stream stops they fade out instead of leaving a frozen hand on screen; a
+hand that disconnects cleanly clears itself immediately. Raise it if you
+are running a very low frame rate and see flicker.
+
+To see joint frames as well, add `publish_tf:=true` — the two are
+independent. For TF, turn the display's **Marker Scale** down to
+`0.02`–`0.05`, since its default is meant for room-scale robots and a
+hand's joints are centimeters apart, and enable **Show Names** to tell
+joints apart by label (`rkk_<hand>_hand_xr_<joint_name>`).
 
 Until `~/calibrate` has been called, expect the hand to be rotated by some
 arbitrary amount around the vertical axis — that's expected (see the design

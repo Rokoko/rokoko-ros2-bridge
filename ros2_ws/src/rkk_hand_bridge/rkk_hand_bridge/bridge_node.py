@@ -8,13 +8,16 @@ import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from geometry_msgs.msg import Point, Pose, Quaternion, TransformStamped
+from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rkk_hand_msgs.msg import HandDescription, HandJoints
 from std_srvs.srv import Trigger
 from tf2_ros import TransformBroadcaster
+from visualization_msgs.msg import MarkerArray
 
 from rkk_hand_bridge import frame_convert as fc
+from rkk_hand_bridge import hand_markers
 from rkk_hand_bridge.hand_stream import HandStream
 from rkk_hand_bridge.timestamps import StampSource
 
@@ -60,15 +63,20 @@ class BridgeNode(Node):
         self.declare_parameter("reconnect_backoff_s", 0.5)
         self.declare_parameter("stamp_source", "auto")
         self.declare_parameter("publish_tf", False)
+        self.declare_parameter("publish_markers", False)
+        self.declare_parameter("marker_lifetime_s", 0.5)
         self.declare_parameter("parent_frame_id", "")
         self.declare_parameter("calibrate_facing_rad", 0.0)
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)
         self._diagnostics_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        # Default (reliable) QoS: RViz's MarkerArray display subscribes reliably.
+        self._markers_pub = self.create_publisher(MarkerArray, "~/hand/markers", 10)
         self._calibrate_srv = self.create_service(Trigger, "~/calibrate", self._handle_calibrate)
         self._tf_broadcaster = TransformBroadcaster(self)
         self._warned_no_parent_frame = False
+        self._warned_no_marker_frame = False
 
         self._published_description = set()
         self._known_hands = {}  # device_id -> hand string, kept across disconnects
@@ -118,6 +126,10 @@ class BridgeNode(Node):
                 self._published_description.discard(device_id)
                 self._stamp_sources.pop(device_id, None)
                 self._last_timestamp_us.pop(device_id, None)
+                if self.get_parameter("publish_markers").value:
+                    hand = self._known_hands.get(device_id)
+                    if hand is not None:
+                        self._markers_pub.publish(hand_markers.deletion(hand))
 
         for device_id, definition in hands.items():
             self._known_hands[device_id] = definition.hand
@@ -171,6 +183,9 @@ class BridgeNode(Node):
         if self.get_parameter("publish_tf").value:
             self._broadcast_tf(definition, rebased, stamp)
 
+        if self.get_parameter("publish_markers").value:
+            self._publish_markers(definition, rebased, stamp)
+
     def _broadcast_tf(self, definition, rebased, stamp: TimeMsg):
         parent_frame_id = self.get_parameter("parent_frame_id").value
         if not parent_frame_id:
@@ -189,6 +204,29 @@ class BridgeNode(Node):
             t.transform.rotation = Quaternion(x=orientation[0], y=orientation[1], z=orientation[2], w=orientation[3])
             transforms.append(t)
         self._tf_broadcaster.sendTransform(transforms)
+
+    def _publish_markers(self, definition, rebased, stamp: TimeMsg):
+        frame_id = self.get_parameter("parent_frame_id").value
+        if not frame_id:
+            if not self._warned_no_marker_frame:
+                self.get_logger().warning(
+                    "publish_markers is set but parent_frame_id is empty; not publishing markers"
+                )
+                self._warned_no_marker_frame = True
+            return
+
+        lifetime = Duration(seconds=self.get_parameter("marker_lifetime_s").value).to_msg()
+        self._markers_pub.publish(
+            hand_markers.build(
+                definition.hand,
+                definition.joint_names,
+                definition.joint_radii,
+                rebased,
+                frame_id,
+                stamp,
+                lifetime,
+            )
+        )
 
     def _publish_diagnostics(self, hands):
         array = DiagnosticArray()
