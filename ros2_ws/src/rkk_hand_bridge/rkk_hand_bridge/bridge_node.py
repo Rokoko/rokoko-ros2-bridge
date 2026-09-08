@@ -69,7 +69,7 @@ class BridgeNode(Node):
 
         self.declare_parameter("solver_host", "127.0.0.1")
         self.declare_parameter("solver_port", 12277)
-        self.declare_parameter("reconnect_backoff_s", 0.5)
+        self.declare_parameter("reconnect_delay_s", 0.5)
         self.declare_parameter("stamp_source", "auto")
         self.declare_parameter("publish_tf", False)
         self.declare_parameter("publish_markers", False)
@@ -100,7 +100,7 @@ class BridgeNode(Node):
         self._stream = stream or HandStream(
             self.get_parameter("solver_host").value,
             self.get_parameter("solver_port").value,
-            reconnect_backoff_s=self.get_parameter("reconnect_backoff_s").value,
+            reconnect_delay_s=self.get_parameter("reconnect_delay_s").value,
             on_unusable_hand=self._on_unusable_hand,
         )
         self._stream.start()

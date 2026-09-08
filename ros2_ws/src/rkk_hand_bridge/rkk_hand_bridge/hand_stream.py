@@ -8,12 +8,15 @@ import threading
 
 from rkk_hand_bridge import rgmp
 
+# Ceiling for the doubling in _run().
+_MAX_RECONNECT_DELAY_S = 10.0
+
 
 class HandStream:
-    def __init__(self, host, port, reconnect_backoff_s=0.5, connect=None, on_unusable_hand=None):
+    def __init__(self, host, port, reconnect_delay_s=0.5, connect=None, on_unusable_hand=None):
         self.host = host
         self.port = port
-        self._reconnect_backoff_s = reconnect_backoff_s
+        self._reconnect_delay_s = reconnect_delay_s
         self._connect = connect or self._default_connect
         self._on_unusable_hand = on_unusable_hand
 
@@ -73,12 +76,12 @@ class HandStream:
             return self._generation
 
     def _run(self):
-        delay = self._reconnect_backoff_s
+        delay = self._reconnect_delay_s
         while not self._stop.is_set():
             try:
                 self._sock = self._connect()
                 self._set_connected(True)
-                delay = self._reconnect_backoff_s
+                delay = self._reconnect_delay_s
                 self._read_loop(self._sock)
             except (OSError, EOFError):
                 pass
@@ -88,7 +91,7 @@ class HandStream:
             if self._stop.is_set():
                 return
             self._stop.wait(delay)
-            delay = min(delay * 2.0, 10.0)
+            delay = min(delay * 2.0, _MAX_RECONNECT_DELAY_S)
 
     def _close_socket(self):
         if self._sock is not None:

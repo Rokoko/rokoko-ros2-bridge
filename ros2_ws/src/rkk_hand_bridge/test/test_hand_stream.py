@@ -101,7 +101,7 @@ def test_disconnect_clears_the_hand():
 
 def test_reconnect_serves_a_fresh_socket():
     sockets = [FakeSocket(_definition_bytes()), FakeSocket(_definition_bytes(device_id=8))]
-    stream = HandStream("h", 0, reconnect_backoff_s=0.01, connect=lambda: sockets.pop(0))
+    stream = HandStream("h", 0, reconnect_delay_s=0.01, connect=lambda: sockets.pop(0))
     stream.start()
     try:
         gen = stream.wait(0, timeout=2.0)
