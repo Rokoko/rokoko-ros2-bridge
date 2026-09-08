@@ -12,6 +12,7 @@
   <exec_depend>rkk_hand_bridge</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>rviz2</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
   <test_depend>python3-pytest</test_depend>

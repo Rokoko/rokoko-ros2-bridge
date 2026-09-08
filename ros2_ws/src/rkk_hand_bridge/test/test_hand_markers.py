@@ -22,10 +22,11 @@ def _rebased(names=_JOINT_NAMES):
     return [((float(i), 0.0, 0.0), _IDENTITY) for i in range(len(names))]
 
 
-def _build(names=_JOINT_NAMES, radii=None, hand="right"):
+def _build(names=_JOINT_NAMES, radii=None, hand="right", **sizing):
     radii = [0.01] * len(names) if radii is None else radii
     return hand_markers.build(
-        hand, names, radii, _rebased(names), "world", TimeMsg(sec=1), DurationMsg(sec=1)
+        hand, names, radii, _rebased(names), "world", TimeMsg(sec=1), DurationMsg(sec=1),
+        **sizing,
     )
 
 
@@ -59,10 +60,39 @@ def test_one_sphere_per_joint_plus_one_bone_marker():
 
 
 def test_spheres_are_diameters_of_the_reported_radii():
-    radii = [0.011] * len(_JOINT_NAMES)
+    radii = [0.004] * len(_JOINT_NAMES)
     sphere = _spheres(_build(radii=radii))[0]
-    assert math.isclose(sphere.scale.x, 0.022)
+    assert math.isclose(sphere.scale.x, 0.008)
     assert sphere.scale.x == sphere.scale.y == sphere.scale.z
+
+
+def test_big_joints_are_capped_but_small_ones_are_left_alone():
+    # A real hand's wrist radius dwarfs a fingertip's; drawn to scale it
+    # swallows the fingers.
+    radii = [0.030] + [0.004] * (len(_JOINT_NAMES) - 1)
+    spheres = _spheres(_build(radii=radii, max_radius_m=0.010))
+    assert math.isclose(spheres[0].scale.x, 0.020)  # capped
+    assert math.isclose(spheres[1].scale.x, 0.008)  # untouched
+
+
+def test_capping_does_not_move_the_joint():
+    radii = [0.030] * len(_JOINT_NAMES)
+    capped = _spheres(_build(radii=radii, max_radius_m=0.010))
+    uncapped = _spheres(_build(radii=radii, max_radius_m=0.0))
+    assert [m.pose.position.x for m in capped] == [m.pose.position.x for m in uncapped]
+    assert uncapped[0].scale.x > capped[0].scale.x
+
+
+def test_scale_shrinks_every_sphere_proportionally():
+    radii = [0.004] * len(_JOINT_NAMES)
+    sphere = _spheres(_build(radii=radii, scale=0.5))[0]
+    assert math.isclose(sphere.scale.x, 0.004)
+
+
+def test_a_zero_cap_means_no_cap():
+    radii = [0.030] * len(_JOINT_NAMES)
+    sphere = _spheres(_build(radii=radii, max_radius_m=0.0))[0]
+    assert math.isclose(sphere.scale.x, 0.060)
 
 
 def test_zero_radius_is_floored_so_rviz_still_draws_it():

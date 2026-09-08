@@ -88,9 +88,11 @@ ros2 launch rkk_hand_bridge hand_bridge.launch.py
 Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `publish_markers` (default `false`), `marker_lifetime_s` (default
-`0.5`), `parent_frame_id` (required if `publish_tf` or `publish_markers`
+`0.5`), `marker_joint_scale`, `marker_max_joint_radius_m`,
+`parent_frame_id` (required if `publish_tf` or `publish_markers`
 is set), `stamp_source` (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
-takes `spawn_solver` (default `true`) and `config` — see below.
+takes `spawn_solver` (default `true`), `config`, `rviz` (default
+`false`) and `rviz_config` — see below.
 
 ### Configuring the solver and driver
 
@@ -175,23 +177,30 @@ the same rebased poses it publishes, and both needing a non-empty
   joint. Correct and useful for debugging orientations, but 26 axis
   triads per hand read as clutter rather than as a hand.
 
+`rviz:=true` opens RViz with a packaged config
+(`rkk_hand_bringup/rviz/smartglove_hands.rviz`) that already has the
+markers display, a 10cm grid and a hand-scale camera set up, so there is
+nothing to add by hand:
+
 ```sh
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
-  publish_markers:=true parent_frame_id:=world
+  publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
-Then, in another sourced shell:
+`rviz_config:=/path/to/my.rviz` uses your own file instead. To run RViz
+separately, point it at the same config:
 
 ```sh
-rviz2
+rviz2 -d "$(ros2 pkg prefix rkk_hand_bringup)/share/rkk_hand_bringup/rviz/smartglove_hands.rviz"
 ```
 
-In RViz:
-
-1. Set **Fixed Frame** (top-left, Global Options) to `world` (or whatever
-   you passed as `parent_frame_id`).
-2. **Add** → **By topic** → `/rkk_hand_bridge/hand/markers` →
-   **MarkerArray**.
+The config's **Fixed Frame** is `world`; if you use a different
+`parent_frame_id`, change it to match (Global Options, top-left). RViz
+needs that frame to exist in TF before it will draw anything positioned
+in it, which is why the command above also passes `publish_tf:=true` —
+the config's TF display is off, so this costs you no clutter, it just
+gives the frame something to exist in. If you already publish `world`
+from elsewhere, markers alone are enough.
 
 Every connected hand appears automatically, left and right in different
 colors, under a `rkk_<hand>_hand/joints` and `rkk_<hand>_hand/bones`
@@ -203,11 +212,29 @@ stream stops they fade out instead of leaving a frozen hand on screen; a
 hand that disconnects cleanly clears itself immediately. Raise it if you
 are running a very low frame rate and see flicker.
 
-To see joint frames as well, add `publish_tf:=true` — the two are
-independent. For TF, turn the display's **Marker Scale** down to
-`0.02`–`0.05`, since its default is meant for room-scale robots and a
-hand's joints are centimeters apart, and enable **Show Names** to tell
-joints apart by label (`rkk_<hand>_hand_xr_<joint_name>`).
+To see joint frames as well, tick the config's **Joint frames** (TF)
+display on — it is shipped disabled, with **Marker Scale** already
+lowered to `0.03` and **Show Names** on, since TF's default scale is
+meant for room-scale robots and a hand's joints are centimeters apart.
+
+### Sizing the joint spheres
+
+OpenXR reports the wrist and palm at their true anatomical radii, several
+times a fingertip's. Drawn to scale they swamp the fingers — a wrist
+sphere comes out around 64mm across on a hand about 180mm long — so
+`marker_max_joint_radius_m` (default `0.010`) caps how big a sphere gets
+drawn. Capping changes drawn size only: a sphere's *centre* is the exact
+joint position either way, so nothing about positional accuracy is lost.
+`marker_joint_scale` (default `1.0`) shrinks every sphere proportionally
+if you want the whole hand daintier, and `marker_max_joint_radius_m:=0.0`
+disables the cap for true-to-life radii.
+
+Both are ordinary node parameters read per frame, so you can dial them in
+against a live hand without restarting anything:
+
+```sh
+ros2 param set /rkk_hand_bridge marker_max_joint_radius_m 0.008
+```
 
 Until `~/calibrate` has been called, expect the hand to be rotated by some
 arbitrary amount around the vertical axis — that's expected (see the design

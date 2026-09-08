@@ -43,6 +43,13 @@ _FALLBACK_COLOR = (0.7, 0.7, 0.7)
 _MIN_RADIUS_M = 0.002
 _BONE_WIDTH_M = 0.004
 
+# OpenXR reports the wrist and palm at their true anatomical radii, which
+# are several times a fingertip's. Drawn to scale they swamp the fingers
+# and the hand looks swollen, so cap the drawn size. A sphere's *centre*
+# is still the exact joint position either way - capping costs no
+# positional accuracy, only the (unhelpful) illusion of volume.
+_DEFAULT_MAX_RADIUS_M = 0.010
+
 _SPHERES_NS = "joints"
 _BONES_NS = "bones"
 
@@ -70,6 +77,8 @@ def build(
     frame_id: str,
     stamp,
     lifetime,
+    scale: float = 1.0,
+    max_radius_m: float = _DEFAULT_MAX_RADIUS_M,
 ) -> MarkerArray:
     """One sphere per joint plus a single LINE_LIST of bones.
 
@@ -78,12 +87,16 @@ def build(
     out of step with them. Joints named in BONES but absent from
     `joint_names` are skipped rather than raising - a description with a
     reduced joint set still renders what it does have.
+
+    `scale` shrinks every sphere; `max_radius_m` caps the big ones. Both
+    affect drawn size only, never position.
     """
     array = MarkerArray()
     index_of = {name: i for i, name in enumerate(joint_names)}
 
     for i, (name, (position, _orientation)) in enumerate(zip(joint_names, rebased)):
         radius = joint_radii[i] if i < len(joint_radii) else 0.0
+        radius = min(radius * scale, max_radius_m) if max_radius_m > 0.0 else radius * scale
         diameter = 2.0 * max(radius, _MIN_RADIUS_M)
 
         marker = Marker()

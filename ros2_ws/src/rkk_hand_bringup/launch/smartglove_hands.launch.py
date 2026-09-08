@@ -11,6 +11,7 @@ from launch.actions import (
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 SECTIONS = ("solver", "driver")
@@ -19,6 +20,12 @@ SECTIONS = ("solver", "driver")
 def _shipped_config():
     return os.path.join(
         get_package_share_directory("rkk_hand_bringup"), "config", "upstream.yaml"
+    )
+
+
+def _shipped_rviz_config():
+    return os.path.join(
+        get_package_share_directory("rkk_hand_bringup"), "rviz", "smartglove_hands.rviz"
     )
 
 
@@ -81,6 +88,20 @@ def _setup(context, *_args, **_kwargs):
             )
         )
     )
+
+    if arg("rviz").strip().lower() in ("1", "true", "yes"):
+        # Opens with the markers display already configured, so there is
+        # nothing to add by hand.
+        actions.append(
+            Node(
+                package="rviz2",
+                executable="rviz2",
+                name="rviz2",
+                output="screen",
+                arguments=["-d", arg("rviz_config") or _shipped_rviz_config()],
+            )
+        )
+
     return actions
 
 
@@ -89,6 +110,8 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("config", default_value=""),
             DeclareLaunchArgument("spawn_solver", default_value="true"),
+            DeclareLaunchArgument("rviz", default_value="false"),
+            DeclareLaunchArgument("rviz_config", default_value=""),
             OpaqueFunction(function=_setup),
         ]
     )

@@ -11,6 +11,7 @@ setup(
         ("share/" + package_name, ["package.xml"]),
         ("share/" + package_name + "/launch", ["launch/smartglove_hands.launch.py"]),
         ("share/" + package_name + "/config", ["config/upstream.yaml"]),
+        ("share/" + package_name + "/rviz", ["rviz/smartglove_hands.rviz"]),
     ],
     install_requires=["setuptools"],
     zip_safe=True,

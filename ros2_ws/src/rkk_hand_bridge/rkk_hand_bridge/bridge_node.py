@@ -65,6 +65,8 @@ class BridgeNode(Node):
         self.declare_parameter("publish_tf", False)
         self.declare_parameter("publish_markers", False)
         self.declare_parameter("marker_lifetime_s", 0.5)
+        self.declare_parameter("marker_joint_scale", 1.0)
+        self.declare_parameter("marker_max_joint_radius_m", 0.010)
         self.declare_parameter("parent_frame_id", "")
         self.declare_parameter("calibrate_facing_rad", 0.0)
 
@@ -225,6 +227,8 @@ class BridgeNode(Node):
                 frame_id,
                 stamp,
                 lifetime,
+                self.get_parameter("marker_joint_scale").value,
+                self.get_parameter("marker_max_joint_radius_m").value,
             )
         )
 
