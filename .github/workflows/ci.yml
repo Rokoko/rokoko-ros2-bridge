@@ -1,0 +1,62 @@
+name: CI
+
+# Builds the colcon workspace and runs the suite the way a developer does,
+# inside the ROS distro this package targets. One job: the three packages
+# share a workspace and a build, so splitting them would only rebuild the
+# same messages twice.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push to the same branch makes the in-flight run obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    name: colcon build and test
+    runs-on: ubuntu-latest
+    # ros-base rather than desktop: the tests need rclpy, the message
+    # generator and tf2, but never RViz, and desktop is gigabytes larger.
+    container: ros:lyrical-ros-base
+    defaults:
+      run:
+        shell: bash
+        working-directory: ros2_ws
+    steps:
+      - uses: actions/checkout@v4
+
+      # colcon and rosdep are not in the ros-base image.
+      - name: Install build tools
+        run: apt-get update && apt-get install -y --no-install-recommends ros-dev-tools
+
+      # Resolves what package.xml declares, so a dependency added there is
+      # installed here without editing this file.
+      - name: Install package dependencies
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          rosdep update
+          rosdep install --from-paths src --ignore-src -r -y
+
+      - name: Build
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          colcon build --event-handlers console_direct+
+
+      - name: Test
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          source install/setup.bash
+          colcon test --event-handlers console_direct+
+
+      # colcon test exits 0 even when tests fail; this is what actually
+      # fails the job.
+      - name: Test results
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          colcon test-result --all --verbose
