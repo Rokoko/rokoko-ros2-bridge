@@ -66,10 +66,11 @@ below for what those two processes are and why nothing else is needed.
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py
 ```
 
-This starts the driver, the solver and the bridge together, using the
-commands in `config/upstream.yaml`. See
-[Configuring the solver and driver](#configuring-the-solver-and-driver)
-to change them.
+This spawns the solver and the bridge together, using the command in
+`config/upstream.yaml` — `rkk-hand-solver --emit-openxr` plus its
+`--driver-arg` values, which makes the solver start `rokoko-sdk` itself.
+See [Configuring the solver and driver](#configuring-the-solver-and-driver)
+to change that command.
 
 **Option B — attach to a solver that's already running** (e.g. you started
 it by hand, or another tool already has it up):
@@ -103,56 +104,40 @@ second set of defaults hidden in the launch file:
 ```yaml
 solver:
   executable: rkk-hand-solver
-  args: ["--emit-openxr", "--no-driver"]
-
-driver:
-  executable: rokoko-sdk
-  args: ["-vv", "--auto-stream-usb", "-ef", "1024"]
+  args: ["--emit-openxr"]
+  driver_args: ["--auto-stream-usb", "-ef", "1024"]
 ```
 
-Both `args` lists are passed through verbatim, so what you read above is
-exactly what runs. `config:=/path/to/my.yaml` merges over this file, so a
-partial file only needs the keys it changes.
+`args` is passed through verbatim, and each entry of `driver_args` is
+forwarded as `--driver-arg=<value>`. `config:=/path/to/my.yaml` merges
+over this file, so a partial file only needs the keys it changes.
 
-**Why the driver is started here rather than by the solver.**
-`rkk-hand-solver` will happily spawn `rokoko-sdk` itself — that is its
-default — but when it does, it prepends its own `-vv --auto-stream-usb`
-and `--driver-arg` can only *append* after those ("Extra argument for the
-driver, after the defaults"). So a driver argument set that way appears
-in addition to the solver's, never instead of it, and repeating one gives
-you `--auto-stream-usb --auto-stream-usb`. Starting the driver from the
-launch file and passing the solver `--no-driver` makes this file the only
-source of the driver's command line.
+Whether a driver gets started is therefore decided by what you put in
+`args`, not by the launch file. With the file above the solver spawns
+`rokoko-sdk` itself, applying its own built-in defaults
+(`-vv --auto-stream-usb`) with `driver_args` appended after them — which
+means `driver_args` can only *add* arguments, never remove a solver
+default. Put `--no-driver` in `args` to attach to a driver you started
+yourself.
 
-The `driver` section is optional. Drop it and put the driver's arguments
-in `solver.driver_args` instead — each becomes `--driver-arg=<value>` —
-if you would rather the solver managed the driver:
+To remove a solver default you need the launch file to run the driver, so
+add an optional `driver` section giving the complete command. That is the
+case for **gloves on WiFi rather than USB**: WiFi is the driver's native
+path (it is a UDP server on `--driver-udp-port`, default `14041`), and
+`--auto-stream-usb` exists only to make USB/serial devices behave the way
+WiFi ones already do.
 
 ```yaml
 solver:
-  executable: rkk-hand-solver
-  args: ["--emit-openxr"]
-  driver_args: ["-ef", "1024"]      # on top of -vv --auto-stream-usb
-```
-
-A `driver` section without `--no-driver` in `solver.args` is rejected at
-launch, since both would start a driver. To attach to a driver you
-started by hand, keep `--no-driver` and delete the `driver` section.
-
-**Gloves on WiFi rather than USB.** WiFi is the driver's native path (it
-is a UDP server on `--driver-udp-port`, default `14041`), and
-`--auto-stream-usb` exists only to make USB/serial devices behave the way
-WiFi ones already do. Harmless with no USB device attached, but to drop
-it, delete it from `driver.args`:
-
-```yaml
+  args: ["--emit-openxr", "--no-driver"]
 driver:
   executable: rokoko-sdk
   args: ["-vv", "-ef", "1024"]
 ```
 
-WiFi gloves must also be on the same network and pointed at this
-machine's LAN address, not `127.0.0.1`.
+A `driver` section without `--no-driver` in `solver.args` is rejected at
+launch, since both would start a driver. WiFi gloves must also be on the
+same network and pointed at this machine's LAN address, not `127.0.0.1`.
 
 `spawn_solver:=false` starts the bridge alone.
 
@@ -279,9 +264,8 @@ rokoko-sdk -vv --auto-stream-usb -ef 1024
 rkk-hand-solver --emit-openxr --no-driver
 ```
 
-Those are the two commands `config/upstream.yaml` runs for you under
-Option A; run them by hand instead and use Option B, or `spawn_solver:=false`,
-to attach the bridge to what is already up.
+`rkk_hand_bringup`'s launch file (Option A/B above) manages step 2 for you;
+step 1 (the driver) is always your responsibility to start separately.
 
 ## Status
 
