@@ -88,9 +88,57 @@ Useful launch arguments (pass as `name:=value`): `solver_host`,
 `solver_port` (default `12277`), `publish_tf` (default `false`),
 `parent_frame_id` (required if `publish_tf:=true`), `stamp_source`
 (default `auto`), `calibrate_facing_rad`. `rkk_hand_bringup` additionally
-takes `spawn_solver` (default `true`) and `spawn_solver_epoch_flag`
-(default `true`, passes `--driver-arg=-ef --driver-arg=1024` to the
-spawned solver).
+takes `spawn_solver` (default `true`), `spawn_driver`, and `config` —
+see below.
+
+### Configuring the solver and driver
+
+The solver and driver are plain subprocesses, not ROS nodes, so their
+arguments don't come from a ROS parameter file. `rkk_hand_bringup` reads
+them from `config/upstream.yaml` instead:
+
+```yaml
+driver:
+  spawn: false                                        # solver spawns it
+  executable: rokoko-sdk
+  args: ["-vv", "--auto-stream-usb", "-ef", "1024"]
+solver:
+  executable: rkk-hand-solver
+  args: ["--emit-openxr"]
+  driver_args: ["-ef", "1024"]                        # via --driver-arg
+```
+
+Those defaults reproduce the previous hardcoded behavior exactly. Point
+`config:=/path/to/my.yaml` at your own file to change them; sections and
+keys you omit fall back to the defaults above, so a partial file is fine.
+
+`driver.spawn` is the important switch. Left `false`, the solver starts
+the driver, applying its own built-in defaults (`-vv --auto-stream-usb`)
+with `solver.driver_args` appended after them — so `--driver-arg` can
+only *add* arguments, never remove a solver default. Set it `true` and
+this launch file starts the driver itself, `driver.args` becomes the
+complete argument list, and the solver gets `--no-driver`.
+
+That matters for **gloves on WiFi rather than USB**: WiFi is the driver's
+native path (it is a UDP server on `--driver-udp-port`, default `14041`),
+and `--auto-stream-usb` exists only to make USB/serial devices behave the
+way WiFi ones already do. It is harmless with no USB device attached, but
+dropping it needs `driver.spawn: true`:
+
+```yaml
+driver:
+  spawn: true
+  args: ["-vv", "-ef", "1024"]
+```
+
+Note that WiFi gloves must be on the same network and pointed at this
+machine's LAN address, not `127.0.0.1`.
+
+Launch arguments override the config file: `spawn_driver:=true|false`
+overrides `driver.spawn`, and `spawn_solver:=false` skips the solver
+regardless. `spawn_solver_epoch_flag` is retained for compatibility —
+setting it to `false` still strips the `-ef 1024` pair — but
+`driver.args`/`driver_args` supersede it.
 
 ## Verifying it's working
 

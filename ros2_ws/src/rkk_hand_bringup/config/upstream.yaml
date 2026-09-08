@@ -1,0 +1,30 @@
+# Upstream chain configuration for smartglove_hands.launch.py.
+#
+# These are plain subprocesses (not ROS nodes), so this is not a ROS
+# parameter file — the launch file reads it and builds command lines.
+# Bridge node parameters are separate; pass those with bridge_params.
+#
+# Defaults below reproduce the historical hardcoded behavior:
+#   rkk-hand-solver --emit-openxr --driver-arg=-ef --driver-arg=1024
+# which in turn spawns:
+#   rokoko-sdk -vv --auto-stream-usb -ef 1024
+
+driver:
+  # false: the solver spawns the driver itself (its built-in defaults
+  #        `-vv --auto-stream-usb` apply, and solver.driver_args are
+  #        appended after them).
+  # true:  this launch file starts the driver, `driver.args` is the
+  #        complete argument list, and the solver is given --no-driver.
+  #        Use this to drop a solver default, e.g. --auto-stream-usb
+  #        when the gloves are on WiFi rather than USB.
+  spawn: false
+  executable: rokoko-sdk
+  args: ["-vv", "--auto-stream-usb", "-ef", "1024"]
+
+solver:
+  executable: rkk-hand-solver
+  # --emit-openxr is the only group the bridge reads.
+  args: ["--emit-openxr"]
+  # Forwarded one-by-one as --driver-arg. Only meaningful when the
+  # solver spawns the driver (driver.spawn: false); ignored otherwise.
+  driver_args: ["-ef", "1024"]
