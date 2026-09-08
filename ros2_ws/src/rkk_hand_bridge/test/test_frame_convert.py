@@ -73,3 +73,13 @@ def test_heading_spread_is_independent_of_ordering():
     headings = [math.radians(10), math.radians(-25), math.radians(40)]
     assert math.isclose(fc.heading_spread(headings),
                         fc.heading_spread(list(reversed(headings))))
+
+
+def test_convert_all_matches_converting_one_at_a_time():
+    from rkk_hand_bridge.rgmp import Pose
+
+    converter = fc.XrToRosConverter(yaw_rad=0.7)
+    poses = [Pose((float(i), 1.0, 2.0), fc.IDENTITY) for i in range(4)]
+    assert converter.convert_all(poses) == [
+        converter.convert(p.position, p.orientation) for p in poses
+    ]

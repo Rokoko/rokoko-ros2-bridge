@@ -218,6 +218,7 @@ class BridgeNode(Node):
             self._warn_unknown_handedness(hands[device_id])
             self._publish_description(hands[device_id])
 
+        device_ids = sorted(hands)
         for device_id, frame in frames.items():
             definition = hands.get(device_id)
             if definition is None:
@@ -225,7 +226,7 @@ class BridgeNode(Node):
             if self._last_timestamp_us.get(device_id) == frame.timestamp_us:
                 continue
             self._last_timestamp_us[device_id] = frame.timestamp_us
-            self._publish_joints(definition, frame, sorted(hands))
+            self._publish_joints(definition, frame, device_ids)
 
     def _publish_description(self, definition):
         msg = HandDescription()
@@ -252,7 +253,7 @@ class BridgeNode(Node):
             return
 
         stamp = _stamp_from_ns(stamp_ns)
-        converted = [converter.convert(j.position, j.orientation) for j in frame.joints]
+        converted = converter.convert_all(frame.joints)
 
         msg = HandJoints()
         msg.header.stamp = stamp
@@ -314,6 +315,12 @@ class BridgeNode(Node):
         if not self._due_for_markers(definition.device_id, len(device_ids)):
             return
 
+        slot_offset = hand_markers.slot_offset(
+            device_ids.index(definition.device_id),
+            len(device_ids),
+            self.get_parameter("marker_hand_spacing_m").value,
+        )
+
         frame_id = self.get_parameter("parent_frame_id").value
         if not frame_id:
             if not self._warned_no_marker_frame:
@@ -335,11 +342,7 @@ class BridgeNode(Node):
                 lifetime,
                 self.get_parameter("marker_joint_scale").value,
                 self.get_parameter("marker_max_joint_radius_m").value,
-                hand_markers.slot_offset(
-                    device_ids.index(definition.device_id),
-                    len(device_ids),
-                    self.get_parameter("marker_hand_spacing_m").value,
-                ),
+                slot_offset,
             )
         )
 

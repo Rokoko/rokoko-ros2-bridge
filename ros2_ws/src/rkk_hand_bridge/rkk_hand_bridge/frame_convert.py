@@ -76,8 +76,15 @@ class XrToRosConverter:
         return q_normalize(q_mul(yaw, XR_BASE_TO_ROS))
 
     def convert(self, position: Vec3, orientation: Quat) -> tuple[Vec3, Quat]:
+        return _apply(self.rotation(), position, orientation)
+
+    def convert_all(self, poses) -> list[tuple[Vec3, Quat]]:
         rotation = self.rotation()
-        return q_rotate(rotation, position), q_normalize(q_mul(rotation, orientation))
+        return [_apply(rotation, p.position, p.orientation) for p in poses]
+
+
+def _apply(rotation: Quat, position: Vec3, orientation: Quat) -> tuple[Vec3, Quat]:
+    return q_rotate(rotation, position), q_normalize(q_mul(rotation, orientation))
 
 
 def measure_heading(wrist_orientation: Quat) -> float:
