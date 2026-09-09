@@ -1,10 +1,11 @@
+from catkin_pkg.package import parse_package
 from setuptools import find_packages, setup
 
 package_name = "rkk_hand_bringup"
 
 setup(
     name=package_name,
-    version="0.0.1",
+    version=parse_package("package.xml").version,
     packages=find_packages(exclude=["test"]),
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
