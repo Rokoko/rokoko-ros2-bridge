@@ -16,6 +16,7 @@ service.
 - [Visualizing in RViz](#visualizing-in-rviz)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
+- [If you see flickering in RViz](#if-you-see-flickering-in-rviz)
 
 ---
 
@@ -405,3 +406,30 @@ passed.
 
 **Hand is rotated the wrong way** — call the calibrate service, see
 [Calibrating](#calibrating).
+
+---
+
+## If you see flickering in RViz
+
+This is not caused by this bridge, or by any ROS node — it reproduces with
+RViz opened on its own, with nothing publishing anything. It is a known,
+unfixed bug in how Mutter (GNOME's compositor) handles XWayland clients
+being resized:
+
+- [ros2/rviz#1079 — major screen flickering/tearing](https://github.com/ros2/rviz/issues/1079)
+- [ros2/rviz#1052 — flickering with HiDPI scaling enabled](https://github.com/ros2/rviz/issues/1052)
+- [GNOME/mutter#2539 — non-interactive resizes cause black flicker](https://gitlab.gnome.org/GNOME/mutter/-/issues/2539)
+- [GNOME/mutter#3241 — XWayland clients flickering since GNOME 45](https://gitlab.gnome.org/GNOME/mutter/-/issues/3241)
+
+What actually triggers it is **resizing a window that is already on
+screen** — maximizing, `-geometry`, snapping, tiling — not the size it
+ends up at. A plain launch that is never resized afterward does not
+flicker:
+
+```sh
+rviz2
+```
+
+Some people report Qt/GNOME environment variables that help on their
+setup, but nothing reliable across machines — if it still flickers for
+you, avoid resizing/maximizing the window, or live with it.
