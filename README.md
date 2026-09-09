@@ -316,7 +316,7 @@ Numeric parameters are doubles, so write `0.0`, not `0`.
 | `parent_frame_id` | *(empty)* | frame TF and markers are published in; required for either |
 | `publish_tf` | `false` | broadcast a transform per joint |
 | `publish_markers` | `false` | publish RViz markers |
-| `marker_rate_hz` | `30.0` | marker updates per second, shared across all hands |
+| `marker_rate_hz` | `40.0` | marker updates per second, shared across all hands |
 | `marker_lifetime_s` | `0.5` | how long a marker survives without an update |
 | `marker_joint_scale` | `1.0` | scales every joint sphere |
 | `marker_max_joint_radius_m` | `0.010` | caps sphere size so wrists don't swamp fingers |
