@@ -223,7 +223,10 @@ def test_calibrate_fails_with_no_hand_data_yet():
     rclpy.init()
     try:
         stream = HandStream("h", 0, connect=lambda: FeedableSocket())
-        node = BridgeNode(stream=stream)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.0)],
+        )
         recorder = rclpy.create_node("recorder")
         executor = SingleThreadedExecutor()
         executor.add_node(node)
@@ -243,7 +246,10 @@ def test_calibrate_applies_offset_to_later_frames():
     try:
         sock = FeedableSocket()
         stream = HandStream("h", 0, connect=lambda: sock)
-        node = BridgeNode(stream=stream)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.0)],
+        )
         recorder = rclpy.create_node("recorder")
 
         received = []
@@ -274,12 +280,56 @@ def test_calibrate_applies_offset_to_later_frames():
         rclpy.shutdown()
 
 
+def test_calibrate_waits_out_the_delay_before_sampling():
+    """Calling the service is itself a hand movement, so the pose at
+    the moment of the call cannot be trusted - only the pose once
+    calibrate_delay_s has passed can."""
+    rclpy.init()
+    try:
+        sock = FeedableSocket()
+        node = BridgeNode(
+            stream=HandStream("h", 0, connect=lambda: sock),
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.3)],
+        )
+        recorder = rclpy.create_node("recorder")
+        executor = SingleThreadedExecutor()
+        executor.add_node(node)
+        executor.add_node(recorder)
+
+        sock.feed(_definition_bytes(device_id=7, hand="right"))
+        sock.feed(_data_bytes_facing(7, 45.0))  # out of position at call time
+        assert _spin_until(executor, lambda: 7 in node._stream.latest(), 5.0)
+
+        def _settle_into_position():
+            time.sleep(0.1)
+            sock.feed(_data_bytes_facing(7, 0.0, timestamp_us=2_000_000))
+
+        threading.Thread(target=_settle_into_position, daemon=True).start()
+        result = _call_calibrate(executor, recorder, node)
+
+        assert result.success is True
+        # the settled pose, not the 45 degrees the hand was at when the
+        # service was called - the delay gave it time to catch up.
+        settled_heading = fc.measure_heading(fc.axis_angle((0.0, 1.0, 0.0), 0.0))
+        assert node._yaw_offset == pytest.approx(
+            fc.yaw_offset_for_heading(settled_heading), abs=1e-6
+        )
+
+        node.destroy_node()
+        recorder.destroy_node()
+    finally:
+        rclpy.shutdown()
+
+
 def test_diagnostics_reflects_connection_and_calibration_state():
     rclpy.init()
     try:
         sock = FeedableSocket()
         stream = HandStream("h", 0, connect=lambda: sock)
-        node = BridgeNode(stream=stream)
+        node = BridgeNode(
+            stream=stream,
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.0)],
+        )
         recorder = rclpy.create_node("recorder")
 
         statuses = []
@@ -699,7 +749,10 @@ def test_calibrate_names_the_hand_it_sampled():
     rclpy.init()
     try:
         sock = FeedableSocket()
-        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        node = BridgeNode(
+            stream=HandStream("h", 0, connect=lambda: sock),
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.0)],
+        )
         recorder = rclpy.create_node("recorder")
         executor = SingleThreadedExecutor()
         executor.add_node(node)
@@ -721,7 +774,10 @@ def test_calibrate_refuses_hands_that_disagree():
     rclpy.init()
     try:
         sock = FeedableSocket()
-        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        node = BridgeNode(
+            stream=HandStream("h", 0, connect=lambda: sock),
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.0)],
+        )
         recorder = rclpy.create_node("recorder")
         executor = SingleThreadedExecutor()
         executor.add_node(node)
@@ -748,6 +804,7 @@ def test_calibrate_accepts_a_wide_disagreement_when_allowed():
             stream=HandStream("h", 0, connect=lambda: sock),
             parameter_overrides=[
                 Parameter("calibrate_max_disagreement_rad", value=math.pi),
+                Parameter("calibrate_delay_s", value=0.0),
             ],
         )
         recorder = rclpy.create_node("recorder")
@@ -769,7 +826,10 @@ def test_calibrate_is_deterministic_across_two_hands():
     rclpy.init()
     try:
         sock = FeedableSocket()
-        node = BridgeNode(stream=HandStream("h", 0, connect=lambda: sock))
+        node = BridgeNode(
+            stream=HandStream("h", 0, connect=lambda: sock),
+            parameter_overrides=[Parameter("calibrate_delay_s", value=0.0)],
+        )
         recorder = rclpy.create_node("recorder")
         executor = SingleThreadedExecutor()
         executor.add_node(node)

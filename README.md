@@ -232,14 +232,19 @@ The solver streams poses referenced to magnetic north, so until you
 calibrate, the hand is correct in shape but rotated by an arbitrary amount
 about the vertical axis.
 
-1. Hold your hand **level**, fingers pointing in the direction you want to
-   become "forward".
-2. With two gloves, point **both hands the same way**.
-3. Call:
+1. Call:
 
 ```sh
 ros2 service call /rkk_hand_bridge/calibrate std_srvs/srv/Trigger {}
 ```
+
+2. You now have `calibrate_delay_s` (5 seconds by default) to get into
+   position — reaching for the keyboard to trigger the call is itself a
+   hand movement, so the pose is sampled after the delay, not at the
+   moment you press enter.
+3. By the time the delay ends, hold your hand **level**, fingers
+   pointing in the direction you want to become "forward". With two
+   gloves, point **both hands the same way**.
 
 A successful call names the hand it measured:
 
@@ -318,6 +323,7 @@ Numeric parameters are doubles, so write `0.0`, not `0`.
 | `marker_hand_spacing_m` | `0.45` | how far apart hands are drawn |
 | `calibrate_facing_rad` | `0.0` | direction calibration treats as forward |
 | `calibrate_max_disagreement_rad` | `30°` | how far apart hands may point when calibrating |
+| `calibrate_delay_s` | `5.0` | wait before sampling, so calling the service isn't itself the movement it measures |
 
 Marker parameters affect the drawing only. `hand/joints` and `/tf` always
 carry every frame of every hand at full rate.

@@ -4,6 +4,7 @@ those hold the actual logic."""
 
 import math
 import threading
+import time
 
 import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
@@ -108,6 +109,7 @@ class BridgeNode(Node):
         self.declare_parameter(
             "calibrate_max_disagreement_rad", constants.CALIBRATE_MAX_DISAGREEMENT_RAD
         )
+        self.declare_parameter("calibrate_delay_s", constants.CALIBRATE_DELAY_S)
 
         self._description_pub = self.create_publisher(HandDescription, "~/hand/description", _LATCHED_QOS)
         self._joints_pub = self.create_publisher(HandJoints, "~/hand/joints", _SENSOR_QOS)
@@ -387,6 +389,16 @@ class BridgeNode(Node):
         self._diagnostics_pub.publish(array)
 
     def _handle_calibrate(self, request, response):
+        # Calling this service is itself a hand movement, so sampling
+        # immediately would catch the hand mid-reach for the keyboard
+        # rather than in the calibration pose. Give it time to settle.
+        delay_s = self.get_parameter("calibrate_delay_s").value
+        if delay_s > 0.0:
+            self.get_logger().info(
+                f"calibrating in {delay_s:g}s - hold your hand(s) level, facing forward"
+            )
+            time.sleep(delay_s)
+
         headings, unreadable = self._wrist_headings()
         if not headings:
             response.success = False

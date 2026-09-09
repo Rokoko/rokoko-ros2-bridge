@@ -20,6 +20,7 @@ PARAMETERS = {
     "marker_hand_spacing_m": constants.MARKER_HAND_SPACING_M,
     "calibrate_facing_rad": constants.CALIBRATE_FACING_RAD,
     "calibrate_max_disagreement_rad": constants.CALIBRATE_MAX_DISAGREEMENT_RAD,
+    "calibrate_delay_s": constants.CALIBRATE_DELAY_S,
 }
 
 
