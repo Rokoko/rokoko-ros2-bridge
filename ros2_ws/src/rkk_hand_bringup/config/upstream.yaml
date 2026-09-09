@@ -1,0 +1,7 @@
+# Upstream chain configuration for smartglove_hands.launch.py.
+# Arguments to start the rkk-hand-solver
+
+solver:
+  executable: rkk-hand-solver
+  args: ["--emit-openxr"]
+  driver_args: ["-ef", "1024"]

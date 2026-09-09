@@ -1,0 +1,13 @@
+# Maintainers
+
+## DCO list
+
+Contributors with write access to this repository who are listed here
+certify the Developer's Certificate of Origin (see [DCO](DCO)) for
+every contribution they make to this project, and so are not required
+to add a Signed-off-by line to each individual commit.
+
+- Anastasia Panaretou <anastasia.panaretou@rokoko.com>
+
+Anyone else contributing must sign off each commit instead — see
+[CONTRIBUTING.md](CONTRIBUTING.md).

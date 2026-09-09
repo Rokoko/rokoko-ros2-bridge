@@ -1,0 +1,106 @@
+name: Release
+
+# Triggered by hand from the Actions tab, never by the "Create a new
+# release" button - that button asks you to type the tag before any
+# workflow can run, so it can't be what derives one from package.xml.
+# This does: bump the <version> in every package.xml in a normal PR,
+# merge it, then run this workflow to tag and release it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Tag and release
+    runs-on: ubuntu-latest
+    container: ros:lyrical-ros-base
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # colcon and rosdep are not in the ros-base image. curl is installed
+      # explicitly too, rather than assumed present, since it's what
+      # publishes the release below.
+      - name: Install build tools
+        run: apt-get update && apt-get install -y --no-install-recommends ros-dev-tools curl
+
+      - name: Install package dependencies
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          cd ros2_ws
+          rosdep update
+          rosdep install --from-paths src --ignore-src -r -y
+
+      # package.xml is the one place a ROS package's version actually
+      # lives - setup.py already reads it via catkin_pkg, so the only
+      # thing left to check is that all three packages agree with
+      # each other. Whichever they agree on becomes the tag.
+      - name: Determine the release version
+        id: version
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          versions=""
+          for pkg in rkk_hand_msgs rkk_hand_bridge rkk_hand_bringup; do
+            v=$(python3 -c "
+          from catkin_pkg.package import parse_package
+          print(parse_package('ros2_ws/src/$pkg/package.xml').version)
+          ")
+            echo "$pkg: $v"
+            versions="$versions $v"
+          done
+
+          unique=$(tr ' ' '\n' <<< "$versions" | sort -u | grep -v '^$')
+          if [[ $(wc -l <<< "$unique") -ne 1 ]]; then
+            echo "::error::package versions disagree: $versions"
+            exit 1
+          fi
+
+          tag="v$unique"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check the tag doesn't already exist
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag already exists - bump the version first"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          cd ros2_ws
+          colcon build --event-handlers console_direct+
+
+      - name: Test
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          cd ros2_ws
+          source install/setup.bash
+          colcon test --event-handlers console_direct+
+
+      - name: Test results
+        run: |
+          source /opt/ros/lyrical/setup.bash
+          cd ros2_ws
+          colcon test-result --all --verbose
+
+      - name: Tag and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "$tag"
+
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" \
+            -d "$(printf '{"tag_name":"%s","name":"%s","generate_release_notes":true}' "$tag" "$tag")"
