@@ -17,6 +17,7 @@ service.
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [If you see flickering in RViz](#if-you-see-flickering-in-rviz)
+- [License](#license)
 
 ---
 
@@ -439,3 +440,13 @@ rviz2
 Some people report Qt/GNOME environment variables that help on their
 setup, but nothing reliable across machines — if it still flickers for
 you, avoid resizing/maximizing the window, or live with it.
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+Contributions must be signed off under the [Developer Certificate of
+Origin](DCO), unless covered by the [MAINTAINERS](MAINTAINERS) DCO
+list; see [CONTRIBUTING.md](CONTRIBUTING.md).

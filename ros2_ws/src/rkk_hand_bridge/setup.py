@@ -17,7 +17,7 @@ setup(
     maintainer="Rokoko",
     maintainer_email="anastasia.panaretou@rokoko.com",
     description="ROS2 bridge for rkk-hand-solver's solved SmartGlove hand output.",
-    license="TODO",
+    license="Apache-2.0",
     entry_points={
         "console_scripts": [
             "bridge_node = rkk_hand_bridge.bridge_node:main",

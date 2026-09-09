@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>Launch files bringing up rkk-hand-solver and rkk_hand_bridge together.</description>
   <maintainer email="anastasia.panaretou@rokoko.com">Rokoko</maintainer>
-  <license>TODO</license>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 

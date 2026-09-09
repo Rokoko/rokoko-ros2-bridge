@@ -18,5 +18,5 @@ setup(
     maintainer="Rokoko",
     maintainer_email="anastasia.panaretou@rokoko.com",
     description="Launch files bringing up rkk-hand-solver and rkk_hand_bridge together.",
-    license="TODO",
+    license="Apache-2.0",
 )
