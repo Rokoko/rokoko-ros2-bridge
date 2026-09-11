@@ -3,7 +3,7 @@
 <package format="3">
   <name>rkk_hand_msgs</name>
   <version>0.9.0</version>
-  <description>Message definitions for solved SmartGlove hand data.</description>
+  <description>Message definitions for solved Smartgloves hand data.</description>
   <maintainer email="anastasia.panaretou@rokoko.com">Rokoko</maintainer>
   <license>Apache-2.0</license>
 
