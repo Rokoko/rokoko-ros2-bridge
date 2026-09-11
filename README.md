@@ -116,7 +116,7 @@ ROS 2 ships binary packages for Windows:
 
 Nothing in this bridge is platform-specific — it is plain Python over a
 TCP connection — so it should run once ROS 2 is installed. The part to
-check first is whether the **Rokoko Device SDK is available for Windows**,
+check first is whether the **Rokoko Device SDK is installed**,
 since the driver and solver have to run somewhere; see the SDK's own
 documentation.
 
