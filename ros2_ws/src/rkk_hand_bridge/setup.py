@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="Rokoko",
     maintainer_email="anastasia.panaretou@rokoko.com",
-    description="ROS2 bridge for rkk-hand-solver's solved SmartGlove hand output.",
+    description="ROS2 bridge for rkk-hand-solver's solved Smartgloves hand output.",
     license="Apache-2.0",
     entry_points={
         "console_scripts": [

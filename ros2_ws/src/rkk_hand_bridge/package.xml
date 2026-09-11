@@ -3,7 +3,7 @@
 <package format="3">
   <name>rkk_hand_bridge</name>
   <version>0.9.0</version>
-  <description>ROS2 bridge for rkk-hand-solver's solved SmartGlove hand output.</description>
+  <description>ROS2 bridge for rkk-hand-solver's solved Smartgloves hand output.</description>
   <maintainer email="anastasia.panaretou@rokoko.com">Rokoko</maintainer>
   <license>Apache-2.0</license>
 

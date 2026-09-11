@@ -1,11 +1,11 @@
-# rkk-ros2-bridge
+# rokoko-ros2-bridge
 
-A ROS 2 bridge for Rokoko SmartGlove solved-hand data. It connects to
+A ROS 2 bridge for Rokoko Smartgloves solved-hand data. It connects to
 `rkk-hand-solver`'s solved-hand output and republishes it as ROS 2 topics,
 an optional TF broadcast, optional RViz markers, and a yaw-calibration
 service.
 
-![A solved SmartGlove hand moving in RViz](docs/rviz-hand.gif)
+![Solved Smartgloves hands moving in RViz](docs/rviz-hand.gif)
 
 - [Prerequisites](#prerequisites)
 - [Installing ROS 2](#installing-ros-2) — [Linux](#linux) · [macOS](#macos) · [Windows](#windows)
@@ -33,7 +33,7 @@ anything about those. Check your version with:
 rokoko doctor
 ```
 
-**SmartGloves**, connected over USB or WiFi.
+**Smartglovess**, connected over USB or WiFi.
 
 **ROS 2 Lyrical Luth**, on Linux, macOS or Windows — see
 [Installing ROS 2](#installing-ros-2).
@@ -164,13 +164,13 @@ python3 -m pytest src/rkk_hand_bridge/test/
 Start everything — driver, solver and bridge — with one command:
 
 ```sh
-ros2 launch rkk_hand_bringup smartglove_hands.launch.py
+ros2 launch rkk_hand_bringup smartgloves_hands.launch.py
 ```
 
 To also open RViz, and draw the hands in it:
 
 ```sh
-ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
+ros2 launch rkk_hand_bringup smartgloves_hands.launch.py \
   publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
@@ -274,7 +274,7 @@ options, both off by default and both needing `parent_frame_id`:
   orientations, cluttered as a picture of a hand.
 
 ```sh
-ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
+ros2 launch rkk_hand_bringup smartgloves_hands.launch.py \
   publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
