@@ -164,13 +164,13 @@ python3 -m pytest src/rkk_hand_bridge/test/
 Start everything — driver, solver and bridge — with one command:
 
 ```sh
-ros2 launch rkk_hand_bringup smartgloves_hands.launch.py
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py
 ```
 
 To also open RViz, and draw the hands in it:
 
 ```sh
-ros2 launch rkk_hand_bringup smartgloves_hands.launch.py \
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
   publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
@@ -274,7 +274,7 @@ options, both off by default and both needing `parent_frame_id`:
   orientations, cluttered as a picture of a hand.
 
 ```sh
-ros2 launch rkk_hand_bringup smartgloves_hands.launch.py \
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
   publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
 ```
 
