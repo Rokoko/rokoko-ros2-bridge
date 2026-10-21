@@ -11,6 +11,7 @@ service.
 - [Installing ROS 2](#installing-ros-2) — [Linux](#linux) · [macOS](#macos) · [Windows](#windows)
 - [Building](#building)
 - [Running](#running)
+- [Running in Docker](#running-in-docker)
 - [Published interface](#published-interface)
 - [Calibrating](#calibrating)
 - [Visualizing in RViz](#visualizing-in-rviz)
@@ -35,7 +36,7 @@ rokoko doctor
 
 **Smartglovess**, connected over USB or WiFi.
 
-**ROS 2 Lyrical Luth**, on Linux, macOS or Windows — see
+**ROS 2 Humble, Jazzy or Lyrical**, on Linux, macOS or Windows — see
 [Installing ROS 2](#installing-ros-2).
 
 > ROS 2's Python bindings (`rclpy` and the message packages) are not on
@@ -49,37 +50,42 @@ rokoko doctor
 
 ## Installing ROS 2
 
-This bridge targets **ROS 2 Lyrical Luth**. The official installation index
-lists every supported platform and method — Debian packages, RPM packages,
-binary archives, and source builds:
+This bridge supports three ROS 2 distributions. Each one is tied to an
+Ubuntu release, so pick the one that matches your machine:
 
-**[ROS 2 Lyrical Luth — Installation](https://docs.ros.org/en/lyrical/Get-Started/Installation.html)**
+| ROS 2 | Ubuntu | Installation |
+| --- | --- | --- |
+| Humble Hawksbill | 22.04 | [docs.ros.org/en/humble](https://docs.ros.org/en/humble/Installation.html) |
+| Jazzy Jalisco | 24.04 | [docs.ros.org/en/jazzy](https://docs.ros.org/en/jazzy/Installation.html) |
+| Lyrical Luth | 26.04 | [docs.ros.org/en/lyrical](https://docs.ros.org/en/lyrical/Get-Started/Installation.html) |
 
-Pick whichever suits your machine; the sections below cover Linux, macOS
-and Windows. Whatever you choose, you also need `colcon` to build the
-workspace, and you must source the installation in every shell that runs
-ROS 2 commands.
+The commands below use `<distro>` for `humble`, `jazzy` or `lyrical`. The
+installation guides list every supported platform and method — Debian
+packages, RPM packages, binary archives, and source builds. Whatever you
+choose, you also need `colcon` to build the workspace, and you must source
+the installation in every shell that runs ROS 2 commands.
+
+If your Ubuntu release does not match any of these, use
+[Docker](#running-in-docker) instead.
 
 ### Linux
 
-On Debian and Ubuntu, install from the apt repositories:
-
-**[Debian packages — install guide](https://docs.ros.org/en/lyrical/Get-Started/Installation/Ubuntu-Install-Debs.html)**
+On Debian and Ubuntu, add the ROS 2 apt repository as the installation
+guide for your distro describes, then:
 
 ```sh
-sudo apt install ros-lyrical-desktop   # includes RViz; several hundred packages
-sudo apt install ros-dev-tools         # colcon, rosdep, vcstool
+sudo apt install ros-<distro>-desktop   # includes RViz; several hundred packages
+sudo apt install ros-dev-tools          # colcon, rosdep, vcstool
 ```
 
 On other distributions, use the RPM packages or the binary archive from the
-[installation index](https://docs.ros.org/en/lyrical/Get-Started/Installation.html)
-— everything after this point works the same way.
+installation guide — everything after this point works the same way.
 
 Source it, and add the line to your `~/.bashrc` if you would rather not
 repeat it:
 
 ```sh
-source /opt/ros/lyrical/setup.bash
+source /opt/ros/<distro>/setup.bash
 ```
 
 Verify with `ros2 doctor`.
@@ -198,6 +204,73 @@ ros2 topic echo /diagnostics --once
 
 `hand/description` should name your device and list 26 joints;
 `hand/joints` should show changing pose data as you move your hand.
+
+---
+
+## Running in Docker
+
+The official `ros:<distro>-ros-base` images run the bridge on any Linux
+host, whatever its Ubuntu release. The Rokoko Device SDK stays on the host:
+the driver and solver run there, and the bridge in the container reaches
+the solver over the host network.
+
+Start the solver on the host:
+
+```sh
+rkk-hand-solver --emit-openxr --driver-arg=-ef --driver-arg=1024
+```
+
+Allow containers to open windows, so RViz can start:
+
+```sh
+xhost +local:docker
+```
+
+From the repository root, start a container:
+
+```sh
+docker run -it --rm --network host --ipc host \
+  -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --device /dev/dri \
+  -v "$PWD":/repo:ro \
+  ros:jazzy-ros-base bash
+```
+
+- `--network host` lets the bridge reach the solver on `127.0.0.1` and
+  makes the topics visible on the host.
+- `--ipc host` is needed alongside it: ROS 2 sends data over shared memory
+  between processes on the same host, and without it topics are listed but
+  no messages arrive.
+- `DISPLAY`, `/tmp/.X11-unix` and `/dev/dri` are only needed for RViz.
+- The repository is mounted read-only and copied before building, so the
+  container does not write into your checkout.
+
+Inside the container, build:
+
+```sh
+apt-get update && apt-get install -y ros-dev-tools
+source /opt/ros/jazzy/setup.bash
+mkdir -p /ws && cp -r /repo/ros2_ws/src /ws/ && cd /ws
+rosdep update && rosdep install --from-paths src --ignore-src -r -y
+colcon build
+source install/setup.bash
+```
+
+Then launch the bridge and RViz. `spawn_solver:=false` attaches to the
+solver on the host instead of starting one, since the container has no SDK:
+
+```sh
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
+  spawn_solver:=false publish_markers:=true publish_tf:=true parent_frame_id:=world rviz:=true
+```
+
+Set up RViz as in [Visualizing in RViz](#visualizing-in-rviz). For Humble,
+replace `jazzy` with `humble` in the image name and the `source` line.
+
+With more than one ROS 2 container on the host network, pass `--no-daemon`
+to `ros2 topic` and `ros2 node` commands, or give each container its own
+`-e ROS_DOMAIN_ID=<n>`. The containers otherwise share one `ros2 daemon`,
+and a daemon from another distro crashes the CLI.
 
 ---
 
@@ -389,7 +462,11 @@ pointed at its LAN address rather than `127.0.0.1`.
 ## Troubleshooting
 
 **`ros2: command not found`** — source ROS 2:
-`source /opt/ros/lyrical/setup.bash`.
+`source /opt/ros/<distro>/setup.bash`.
+
+**`Unable to locate package ros-<distro>-desktop`** — that distro has no
+packages for your Ubuntu release. Check the table in
+[Installing ROS 2](#installing-ros-2), or use [Docker](#running-in-docker).
 
 **`Package 'rkk_hand_bringup' not found`** — source the workspace:
 `source install/setup.bash` from `ros2_ws`, after `colcon build`.
