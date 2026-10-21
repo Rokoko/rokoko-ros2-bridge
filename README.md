@@ -223,18 +223,10 @@ Start the solver on the host:
 rkk-hand-solver --emit-openxr --driver-arg=-ef --driver-arg=1024
 ```
 
-Allow containers to open windows, so RViz can start:
-
-```sh
-xhost +local:docker
-```
-
 From the repository root, start a container:
 
 ```sh
 docker run -it --rm --network host --ipc host \
-  -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
-  --device /dev/dri \
   -v "$PWD":/repo:ro \
   ros:jazzy-ros-base bash
 ```
@@ -244,9 +236,25 @@ docker run -it --rm --network host --ipc host \
 - `--ipc host` is needed alongside it: ROS 2 sends data over shared memory
   between processes on the same host, and without it topics are listed but
   no messages arrive.
-- `DISPLAY`, `/tmp/.X11-unix` and `/dev/dri` are only needed for RViz.
 - The repository is mounted read-only and copied before building, so the
   container does not write into your checkout.
+
+**To use RViz, or any other window, from the container**, allow
+containers to use your display on the host:
+
+```sh
+xhost +local:docker
+```
+
+and add the display and GPU to `docker run`:
+
+```sh
+docker run -it --rm --network host --ipc host \
+  -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
+  --device /dev/dri \
+  -v "$PWD":/repo:ro \
+  ros:jazzy-ros-base bash
+```
 
 Inside the container, build:
 
@@ -259,8 +267,14 @@ colcon build
 source install/setup.bash
 ```
 
-Then launch the bridge and RViz. `spawn_solver:=false` attaches to the
-solver on the host instead of starting one, since the container has no SDK:
+Then launch the bridge. `spawn_solver:=false` attaches to the solver on
+the host instead of starting one, since the container has no SDK:
+
+```sh
+ros2 launch rkk_hand_bringup smartglove_hands.launch.py spawn_solver:=false
+```
+
+With the display flags above, you can also open RViz:
 
 ```sh
 ros2 launch rkk_hand_bringup smartglove_hands.launch.py \
