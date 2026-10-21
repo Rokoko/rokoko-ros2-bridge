@@ -92,9 +92,11 @@ Verify with `ros2 doctor`.
 
 ### macOS
 
-There are no binary packages for macOS, so ROS 2 is built from source:
-
-**[macOS (source) — install guide](https://docs.ros.org/en/lyrical/Get-Started/Installation/Alternatives/macOS-Development-Setup.html)**
+There are no binary packages for macOS, so ROS 2 is built from source.
+macOS (source) install guide:
+**[Humble](https://docs.ros.org/en/humble/Installation/Alternatives/macOS-Development-Setup.html)** ·
+**[Jazzy](https://docs.ros.org/en/jazzy/Installation/Alternatives/macOS-Development-Setup.html)** ·
+**[Lyrical](https://docs.ros.org/en/lyrical/Get-Started/Installation/Alternatives/macOS-Development-Setup.html)**
 
 Two things to know before starting:
 
@@ -106,7 +108,7 @@ Two things to know before starting:
 Then source it, from wherever you built it:
 
 ```sh
-source ~/ros2_lyrical/install/setup.bash
+source ~/ros2_<distro>/install/setup.bash
 ```
 
 Everything from [Building](#building) onward is the same on every
@@ -116,9 +118,10 @@ platform.
 
 > Untested by the maintainers — reports welcome.
 
-ROS 2 ships binary packages for Windows:
-
-**[Windows (binary) — install guide](https://docs.ros.org/en/lyrical/Get-Started/Installation/Windows-Install-Binary.html)**
+ROS 2 ships binary packages for Windows. Windows (binary) install guide:
+**[Humble](https://docs.ros.org/en/humble/Installation/Windows-Install-Binary.html)** ·
+**[Jazzy](https://docs.ros.org/en/jazzy/Installation/Windows-Install-Binary.html)** ·
+**[Lyrical](https://docs.ros.org/en/lyrical/Get-Started/Installation/Windows-Install-Binary.html)**
 
 Nothing in this bridge is platform-specific — it is plain Python over a
 TCP connection — so it should run once ROS 2 is installed. The part to
@@ -131,7 +134,7 @@ Three differences from the commands elsewhere in this README:
 - Source ROS 2 and the workspace with the batch scripts rather than
   `source`:
   ```bat
-  call C:\dev\ros2_lyrical\local_setup.bat
+  call C:\dev\ros2_<distro>\local_setup.bat
   call install\setup.bat
   ```
 - Use `python` rather than `python3`.
